@@ -1,0 +1,79 @@
+import Darwin
+import Foundation
+import MacPulseCore
+
+@main
+struct MacPulseCLI {
+    static func main() async {
+        let args = Args(Array(CommandLine.arguments.dropFirst()))
+        Style.configure(disable: args.has("no-color") || args.has("json"))
+        signal(SIGPIPE, SIG_IGN)
+        do {
+            let code = try await Commands(args: args).dispatch()
+            exit(code)
+        } catch let e as MacPulseError {
+            report(e, args)
+            exit(e.exitCode)
+        } catch {
+            report(.failed("\(error)"), args)
+            exit(1)
+        }
+    }
+
+    static func report(_ e: MacPulseError, _ args: Args) {
+        if args.has("json") {
+            print(JSON.string(["error": ["code": e.code, "message": e.description]]))
+        } else {
+            printErr(Style.red("error[\(e.code)]") + ": " + e.description)
+            if case .usage = e { printErr("Run 'macpulse help' for usage.") }
+        }
+    }
+}
+
+let helpText = """
+MacPulse Pro — native macOS system monitoring, diagnostics and safe optimization.
+
+USAGE
+  macpulse <command> [options]
+
+MONITORING
+  status                         Health score, key metrics, top processes, warnings
+  doctor                         Environment, permissions, metric availability, collector overhead
+  cpu                            Per-core (P/E) usage, load, busiest processes
+  memory                         Pressure, swap, compression, largest apps, growth findings
+  gpu [--sample SEC]             GPU utilization and per-process GPU time
+  thermal                        Thermal pressure, throttling indicators, power state
+  battery                        Battery health and power information
+  monitor [--interval SEC] [--count N]   Live dashboard (Ctrl-C to quit)
+  monitor install|uninstall|status       Opt-in background monitor (LaunchAgent, no admin)
+  monitor run                    Run the background monitor loop in the foreground
+  history [--hours N] [--metric cpu|memory|swap|gpu|thermal|disk] [--csv]
+  events [--hours N]             Alerts recorded by the background monitor
+  recommend                      Ranked, evidence-based recommendations
+
+STORAGE
+  disk analyze [--personal] [--no-protected]   Categorized cleanup candidates (read-only)
+  disk clean [--select ID,ID | --all-safe] [--mode trash|delete] [--apply] [--yes]
+                                 Dry run by default; --apply performs the cleanup after confirmation
+  disk large [PATH] [--min-size 1GB]           Largest files (clone-aware sizes)
+  disk duplicates PATH [--min-size 1MB]        Identical files by SHA-256
+  disk history                   Cleanup audit log (estimated vs measured bytes)
+
+PROCESSES
+  processes [--sort cpu|memory|runtime|pid|name] [--limit N] [--filter TEXT] [--all]
+  processes tree [--pid PID]     Parent/child tree
+  processes inspect PID          Details, arguments (secrets redacted), signature, ancestry
+  processes terminate PID [--force] [--yes]    Graceful quit with pid-reuse protection
+
+REPORTS & CONFIG
+  report [--format markdown|json|csv|html] [--output FILE] [--with-storage]
+  config show | config set KEY VALUE | config path | config reset
+  version | help
+
+GLOBAL OPTIONS
+  --json        Machine-readable output (errors too)       --no-color   Disable ANSI colors
+  --verbose     Extra diagnostics
+
+EXIT CODES
+  0 ok · 1 failure · 3 warnings present (status/doctor) · 64 usage · 69 unavailable · 75 busy · 77 refused/permission
+"""
