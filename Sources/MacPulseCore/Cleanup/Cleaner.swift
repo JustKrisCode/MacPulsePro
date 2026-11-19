@@ -107,11 +107,11 @@ public struct Cleaner: Sendable {
     }
 
     public func run(_ candidates: [CleanupCandidate], mode: CleanupMode, dryRun: Bool,
-                    cancel: CancellationFlag? = nil,
+                    cancel: CancellationFlag? = nil, runLabel: String? = nil,
                     progress: (@Sendable (Int, Int, String) -> Void)? = nil) throws -> CleanupRunResult {
         let lock = dryRun ? nil : try CleanupLock(path: lockPath)
         defer { lock?.release() }
-        let runID = UUID().uuidString.prefix(8).lowercased()
+        let runID = (runLabel.map { $0 + "-" } ?? "") + UUID().uuidString.prefix(8).lowercased()
         let started = Date()
         let freeBefore = StorageCollector.volume("/")?.available
         let running = runningState()

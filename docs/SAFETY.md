@@ -8,6 +8,13 @@
   only possible for rules that allow it. The Trash itself can only be emptied permanently, and the UI says so.
 - Processes are never terminated automatically. Termination is graceful first (an app is asked to quit, a non-app
   receives SIGTERM). SIGKILL needs a second, separate confirmation.
+- **Automatic cleanup is the only autonomous action**, and it is off by default. When enabled it may only:
+  - clean SAFE items in the developer-cache, logs, browser-cache and application-cache categories;
+  - touch items untouched for ≥ 24 h, ≥ 10 MB, and not blocked (owner not running, validated, not a symlink).
+
+  REVIEW, PROTECTED and UNKNOWN items are never considered. It goes through the same `Cleaner` path (allowlist,
+  in-use recheck, double inode revalidation, lock, audit with an `auto-` run id) and records an event each time it
+  runs. `macpulse autoclean preview` and the Settings preview show exactly what the next run would do.
 - MacPulse makes no network connections, needs no root, and never changes SIP, TCC, kernel or thermal settings.
 
 ## Cleanup classification

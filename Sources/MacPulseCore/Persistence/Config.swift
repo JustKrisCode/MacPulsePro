@@ -44,6 +44,8 @@ public struct MacPulseConfig: Codable, Sendable, Equatable {
     public var menuBarMetrics: [String] = ["cpu", "memory"]
     /// Foreground app refresh interval, seconds.
     public var uiRefreshSeconds: Double = 2
+    /// Opt-in scheduled cleanup of SAFE items.
+    public var autoClean = AutoCleanConfig()
 
     public init() {}
 
@@ -60,6 +62,7 @@ public struct MacPulseConfig: Codable, Sendable, Equatable {
         thresholds = try c.decodeIfPresent(Thresholds.self, forKey: .thresholds) ?? d.thresholds
         menuBarMetrics = try c.decodeIfPresent([String].self, forKey: .menuBarMetrics) ?? d.menuBarMetrics
         uiRefreshSeconds = min(60, max(1, try c.decodeIfPresent(Double.self, forKey: .uiRefreshSeconds) ?? d.uiRefreshSeconds))
+        autoClean = try c.decodeIfPresent(AutoCleanConfig.self, forKey: .autoClean) ?? d.autoClean
     }
 
     public static func load(path: String = AppPaths.config) -> MacPulseConfig {

@@ -69,6 +69,10 @@ final class AppModel {
     var growthScans: [GrowthScan] = []
     var growthScanning = false
     var energyHistory: [SeriesPointValue] = []
+    var autoCleanPreview: AutoCleanOutcome?
+    var autoCleanBusy = false
+    var autoCleanLastRun: Date?
+    private var lastAutoCleanCheck = Date.distantPast
 
     let store: HistoryStore?
     private let sampler = SystemSampler()
@@ -84,6 +88,7 @@ final class AppModel {
         refreshAgentStatus()
         loadStoredHistory()
         reloadCleanupHistory()
+        loadAutoCleanState()
         start()
     }
 
@@ -162,6 +167,7 @@ final class AppModel {
             ctx.thresholds = config.thresholds
             findings = ProcessAnalyzer.findings(ctx)
         }
+        maybeAutoClean()
         recommendations = RecommendationEngine.recommendations(RecommendationContext(
             snapshot: snap, history: historySummary, findings: findings, cleanup: storage?.summary, thresholds: config.thresholds))
     }
@@ -280,6 +286,38 @@ final class AppModel {
             await MainActor.run { self.growthScanning = false; self.loadGrowthScans() }
         }
     }
+
+    // MARK: Automatic cleanup
+
+    /// Hourly check while the app is open. Skipped when the background monitor runs (it owns the schedule).
+    func maybeAutoClean() {
+        guard config.autoClean.enabled, !autoCleanBusy, Date().timeIntervalSince(lastAutoCleanCheck) > 3600, let store else { return }
+        lastAutoCleanCheck = Date()
+        guard agentStatus?.loaded != true, AutoCleaner.isDue(config.autoClean, lastRun: AutoCleaner.lastRun(store)) else { return }
+        runAutoClean(dryRun: false)
+    }
+
+    func runAutoClean(dryRun: Bool) {
+        guard !autoCleanBusy else { return }
+        autoCleanBusy = true
+        var cfg = config.autoClean
+        cfg.enabled = true
+        let store = self.store, notifyOn = config.notificationsEnabled && isBundled
+        Task.detached(priority: dryRun ? .userInitiated : .background) {
+            let outcome = try? AutoCleaner.run(config: cfg, store: store, dryRun: dryRun)
+            await MainActor.run {
+                self.autoCleanBusy = false
+                if dryRun { self.autoCleanPreview = outcome } else {
+                    self.banner = outcome.map { "Automatic cleanup: " + $0.summary } ?? "Automatic cleanup could not run (another cleanup may be in progress)."
+                    self.reloadCleanupHistory()
+                    self.loadAutoCleanState()
+                    if notifyOn, let o = outcome, o.result != nil { Notifier.post(title: "MacPulse: Automatic cleanup", body: o.summary) }
+                }
+            }
+        }
+    }
+
+    func loadAutoCleanState() { autoCleanLastRun = store.flatMap { AutoCleaner.lastRun($0) } }
 
     // MARK: Processes
 

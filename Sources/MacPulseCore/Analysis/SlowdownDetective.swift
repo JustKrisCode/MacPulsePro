@@ -13,6 +13,9 @@ public struct SlowdownDiagnosis: Codable, Sendable {
     public var baselineDescription: String
     public var changes: [MetricChange]
     public var causes: [SlowdownCause]
+
+    /// True when there is no bottleneck and no high-impact cause — the UI shows an all-clear only then.
+    public var isClear: Bool { bottleneck == .none && !causes.contains { $0.impact == .high } }
 }
 
 public struct MetricChange: Codable, Sendable, Identifiable {
@@ -67,11 +70,15 @@ public enum SlowdownDetective {
         let summary = HistorySummary.compute(hist + [HistorySample(s)], cpuThreshold: input.thresholds.sustainedCPUPercent,
                                              cpuWindow: input.thresholds.sustainedCPUMinutes * 60)
 
+        // Swapping is judged by volume (MB/min written to swap), not by page count: pages are 16 KB on Apple Silicon.
+        let pageBytes = Double(s.memory?.pageSize ?? 16384)
+        let swapMBPerMin = (summary.swapoutsPerMinute ?? 0) * pageBytes / 1_048_576
+
         // MARK: resource pressure (0–100)
         var pressure: [String: Int] = [:]
         if let m = s.memory {
             var p = m.pressure == .critical ? 95 : m.pressure == .warning ? 70 : 0
-            if let r = summary.swapoutsPerMinute { p = max(p, min(90, Int(r / 50))) }
+            p = max(p, min(90, Int(swapMBPerMin * 0.9)))
             p = max(p, Int(Double(m.compressed) / Double(max(m.physical, 1)) * 100))
             pressure["memory"] = min(100, p)
         }
@@ -142,11 +149,15 @@ public enum SlowdownDetective {
                                             relatedPIDs: g.pids, suggestion: "Close windows/tabs or quit \(g.name) to relieve memory pressure."))
             }
         }
-        if let r = summary.swapoutsPerMinute, r > 500 || (summary.swapGrowthPerHour ?? 0) > input.thresholds.swapGrowthBytesPerHour {
-            causes.append(SlowdownCause(kind: .swapping, title: "The system is actively swapping",
-                                        evidence: ["\(Int(r)) page-outs/min", summary.swapGrowthPerHour.map { "Swap growing \(Format.memory(Int64($0)))/h" } ?? "",
+        let swapGrowing = (summary.swapGrowthPerHour ?? 0) > input.thresholds.swapGrowthBytesPerHour
+        if let r = summary.swapoutsPerMinute, swapMBPerMin >= 5 || swapGrowing {
+            let impact: Level = swapMBPerMin >= 100 ? .high : swapMBPerMin >= 20 || swapGrowing ? .medium : .low
+            causes.append(SlowdownCause(kind: .swapping,
+                                        title: impact == .low ? "Light background swapping" : "The system is actively swapping",
+                                        evidence: ["\(Int(r)) page-outs/min ≈ \(String(format: "%.0f", swapMBPerMin)) MB/min written to swap",
+                                                   summary.swapGrowthPerHour.flatMap { $0 > 100_000_000 ? "Swap growing \(Format.memory(Int64($0)))/h" : nil } ?? "",
                                                    "Swap in use: \(Format.memory(s.memory?.swapUsed))"].filter { !$0.isEmpty },
-                                        impact: .high, confidence: .high, relatedPIDs: [],
+                                        impact: impact, confidence: .high, relatedPIDs: [],
                                         suggestion: "Swapping makes everything wait on the SSD. Reduce the number of heavy apps open at once."))
         }
         // Heavy processes that did not exist at baseline time.
@@ -206,7 +217,7 @@ public enum SlowdownDetective {
         causes.sort { ($0.impact, $0.confidence) > ($1.impact, $1.confidence) }
 
         let verdict: String = switch bottleneck {
-        case .memory: "Memory is the bottleneck: apps are competing for RAM\(summary.swapoutsPerMinute.map { $0 > 500 ? " and the system is swapping" : "" } ?? "")."
+        case .memory: "Memory is the bottleneck: apps are competing for RAM\(swapMBPerMin >= 20 ? " and the system is swapping" : "")."
         case .cpu: (s.cpu?.total ?? 0) >= 85
             ? "The CPU is saturated: more work is queued than the cores can run."
             : "The CPU is the most contended resource (\(Format.percent(s.cpu?.total)) busy with a long run queue)."

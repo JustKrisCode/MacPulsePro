@@ -24,6 +24,9 @@ unavailable), and never deletes or terminates anything without validated, explic
   second. It answers "what is draining my battery?" without `sudo powermetrics`.
 - **Disk growth tracking**: measured folder sizes over time, including swap files, so "where did my free space
   go?" has a measured answer. The background monitor records one scan a day.
+- **Automatic cleanup (opt-in)**: on a schedule, removes only SAFE, rebuildable caches and old logs that have been
+  idle for at least 24 h and whose apps are not running. Every item still passes the full validation chain and is
+  written to the audit log. Turn it on in Settings or with `macpulse autoclean enable`.
 - **Workload gate**: `macpulse run --when-ready -- make build` starts a heavy job only once the Mac is cool, memory
   pressure is normal and the CPU has headroom. This is useful on fanless Macs, where overlapping heavy jobs throttle
   each other.
@@ -36,7 +39,7 @@ unavailable), and never deletes or terminates anything without validated, explic
 ## Build, test, install
 
 ```sh
-swift test                      # 104 tests: safety, parsers, analysis, persistence, live collectors, overhead
+swift test                      # 110 tests: safety, parsers, analysis, persistence, live collectors, overhead
 scripts/build-app.sh            # → build/MacPulse Pro.app  (bundles the CLI at Contents/MacOS/macpulse)
 UNIVERSAL=1 scripts/build-app.sh  # arm64 + x86_64 (Intel)
 scripts/install.sh              # → ~/Applications/MacPulse Pro.app and ~/.local/bin/macpulse (no sudo)
@@ -71,6 +74,7 @@ macpulse energy [--sample 3]        power per app (W) and CPU wakeups
 macpulse ready [--cpu 60] [--allow-fair]       exit 0 if there is headroom for heavy work, 10 if not
 macpulse run --when-ready [--max-wait 30m] [--run-anyway] -- COMMAND ARGS…   start a job once the Mac is ready
 macpulse disk growth [--scan] [--since 7d] [--personal]  what grew on disk, including swap files
+macpulse autoclean [status|enable|disable|preview|run] [--every 7] [--mode delete|trash] [--categories …]
 macpulse disk analyze [--personal]  categorized candidates with IDs (read-only)
 macpulse disk clean --select ID,ID  dry run (default)
 macpulse disk clean --select ID,ID --mode trash|delete --apply   validated cleanup after confirmation
@@ -105,6 +109,9 @@ out-of-range values are clamped.
 | `notificationsEnabled` | false | Alert notifications (opt-in) |
 | `notificationCooldownMinutes` | 60 | Minimum gap between alerts of the same kind |
 | `uiRefreshSeconds` | 2 | App refresh while the window is open |
+| `autoClean.enabled` / `intervalDays` / `mode` | false / 7 / delete | Scheduled SAFE cleanup (opt-in) |
+| `autoClean.categories` | `["developerCache","logs"]` | Allowed: `developerCache, logs, browserCache, applicationCache` |
+| `autoClean.minIdleHours` / `minItemBytes` | 24 / 10 MB | Skip recently used or tiny items |
 | `menuBarMetrics` | `["cpu","memory"]` | Any of `cpu, memory, gpu, swap, thermal, disk` |
 | `thresholds.*` | see `macpulse config show` | Low disk, swap growth, sustained CPU, runaway process, memory growth |
 

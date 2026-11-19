@@ -66,6 +66,8 @@ STORAGE
   disk duplicates PATH [--min-size 1MB]        Identical files by SHA-256
   disk history                   Cleanup audit log (estimated vs measured bytes)
   disk growth [--scan] [--since 7d] [--personal]   What grew on disk, incl. swap files
+  autoclean [status|enable|disable|preview|run] [--every 7] [--mode delete|trash] [--categories …]
+                                 Opt-in scheduled cleanup of SAFE caches/logs (idle ≥24 h, apps not running)
 
 PROCESSES
   processes [--sort cpu|memory|energy|wakeups|runtime|pid|name] [--limit N] [--filter TEXT] [--all]

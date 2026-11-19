@@ -26,6 +26,35 @@ struct SettingsView: View {
                     }))
                 }
             }
+            Section("Automatic cleanup") {
+                Toggle("Clean SAFE items automatically", isOn: Binding(get: { model.config.autoClean.enabled }, set: {
+                    model.config.autoClean.enabled = $0; model.saveConfig()
+                }))
+                Picker("Every", selection: $model.config.autoClean.intervalDays) {
+                    ForEach([1.0, 3, 7, 14, 30], id: \.self) { Text($0 == 1 ? "day" : "\(Int($0)) days").tag($0) }
+                }
+                Picker("Method", selection: $model.config.autoClean.mode) {
+                    Text("Delete permanently (frees space)").tag(CleanupMode.delete)
+                    Text("Move to Trash (recoverable)").tag(CleanupMode.trash)
+                }
+                ForEach([CleanupCategory.developerCache, .logs, .browserCache, .applicationCache], id: \.self) { cat in
+                    Toggle(cat.title, isOn: Binding(get: { model.config.autoClean.categories.contains(cat) }, set: { on in
+                        if on { model.config.autoClean.categories.append(cat) } else { model.config.autoClean.categories.removeAll { $0 == cat } }
+                    }))
+                }
+                Text("Only SAFE, rebuildable items untouched for \(Int(model.config.autoClean.minIdleHours)) h; caches of running apps are skipped. Every item is validated again before removal and logged in Cleanup History. REVIEW and PROTECTED items are never touched.")
+                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Last run", value: model.autoCleanLastRun.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "never")
+                if model.config.autoClean.enabled && model.agentStatus?.loaded != true {
+                    Text("The background monitor is off, so cleanup runs only while MacPulse is open. Enable it in Monitoring for unattended runs.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                HStack {
+                    Button("Preview…") { model.saveConfig(); model.runAutoClean(dryRun: true) }
+                    Button("Run Now") { model.saveConfig(); model.runAutoClean(dryRun: false) }
+                    if model.autoCleanBusy { ProgressView().controlSize(.small) }
+                }
+            }
             Section("Thresholds") {
                 Stepper("Low disk below \(Int(model.config.thresholds.lowDiskFreePercent))%", value: $model.config.thresholds.lowDiskFreePercent, in: 2...40)
                 Stepper("Sustained CPU at \(Int(model.config.thresholds.sustainedCPUPercent))%", value: $model.config.thresholds.sustainedCPUPercent, in: 50...100, step: 5)
@@ -47,6 +76,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onDisappear { model.saveConfig() }
+        .sheet(item: Binding(get: { model.autoCleanPreview.map { PreviewBox(outcome: $0) } }, set: { if $0 == nil { model.autoCleanPreview = nil } })) { box in
+            AutoCleanPreviewSheet(outcome: box.outcome) { model.autoCleanPreview = nil }
+        }
     }
 }
 
@@ -144,5 +176,44 @@ struct MiniMeter: View {
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+struct PreviewBox: Identifiable { let outcome: AutoCleanOutcome; var id: Date { outcome.ranAt } }
+
+struct AutoCleanPreviewSheet: View {
+    let outcome: AutoCleanOutcome
+    let done: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Automatic cleanup — preview").font(.title2.weight(.semibold))
+            Text("Nothing has been changed. This is what the next automatic run would clean.").foregroundStyle(.secondary)
+            List {
+                Section("Would clean") {
+                    if (outcome.result?.items ?? []).isEmpty { Text("Nothing eligible right now.").foregroundStyle(.secondary) }
+                    ForEach(outcome.result?.items ?? []) { r in
+                        HStack {
+                            Image(systemName: r.status == .dryRun ? "checkmark.circle.fill" : "xmark.circle").foregroundStyle(r.status == .dryRun ? .green : .orange)
+                            Text(r.path).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Text(Format.bytes(r.estimatedBytes)).monospacedDigit()
+                        }
+                    }
+                }
+                if !outcome.skipped.isEmpty {
+                    Section("Skipped") {
+                        ForEach(outcome.skipped, id: \.path) { s in
+                            VStack(alignment: .leading) {
+                                Text(s.path).lineLimit(1).truncationMode(.middle)
+                                Text(s.reason).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            HStack { Text(outcome.summary).foregroundStyle(.secondary); Spacer(); Button("Done", action: done).keyboardShortcut(.defaultAction) }
+        }
+        .padding(24)
+        .frame(width: 640, height: 520)
     }
 }

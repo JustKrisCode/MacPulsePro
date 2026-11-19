@@ -16,7 +16,7 @@ extension Commands {
         let d = SlowdownDetective.diagnose(.init(snapshot: snap, history: history, processHistory: series,
                                                  findings: ProcessAnalyzer.findings(ctx), thresholds: config.thresholds))
         emit(d) {
-            var o = Style.bold("Why is my Mac slow?") + "\n\n  " + (d.bottleneck == .none ? Style.green(d.verdict) : Style.yellow(d.verdict)) + "\n"
+            var o = Style.bold("Why is my Mac slow?") + "\n\n  " + (d.isClear ? Style.green(d.verdict) : Style.yellow(d.verdict)) + "\n"
             o += heading("Resource pressure (0–100, inferred from measured signals)")
             for key in ["memory", "cpu", "thermal", "storage", "gpu"] {
                 guard let v = d.pressure[key] else { continue }

@@ -19,6 +19,7 @@ public actor MonitorAgent {
     private var processHistory: [ProcessIdentity: [ProcessHistoryPoint]] = [:]
     private var lastPrune = Date.distantPast
     private var lastGrowthScan = Date.distantPast
+    private var lastAutoCleanCheck = Date.distantPast
     /// Disable for tests or very constrained setups.
     public var growthScansEnabled = true
     private var lastAlert: [String: Date] = [:]
@@ -82,6 +83,18 @@ public actor MonitorAgent {
             alerts.append(alert)
         }
         // Daily disk-growth scan (background priority) so "where did my space go?" has history.
+        // Opt-in scheduled cleanup of SAFE items (checked hourly; runs when the interval has elapsed).
+        if config.autoClean.enabled && start.timeIntervalSince(lastAutoCleanCheck) > 3600 {
+            lastAutoCleanCheck = start
+            if AutoCleaner.isDue(config.autoClean, lastRun: AutoCleaner.lastRun(store)) {
+                let cfg = config.autoClean, store = self.store, notifyOn = config.notificationsEnabled
+                let task = Task.detached(priority: .background) { try AutoCleaner.run(config: cfg, store: store, dryRun: false) }
+                let outcome = try? await task.value
+                if let outcome, outcome.result != nil, notifyOn {
+                    notify(MonitorAlert(kind: "auto-clean", severity: .info, title: "Automatic cleanup", detail: outcome.summary))
+                }
+            }
+        }
         if growthScansEnabled && start.timeIntervalSince(lastGrowthScan) > 86400 {
             lastGrowthScan = start
             let latest = (try? store.growthScans(limit: 1))?.first?.timestamp ?? .distantPast

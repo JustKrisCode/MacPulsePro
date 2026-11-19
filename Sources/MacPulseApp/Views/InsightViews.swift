@@ -13,9 +13,9 @@ struct DiagnosisSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
-                Image(systemName: diagnosis.bottleneck == .none ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                Image(systemName: diagnosis.isClear ? "checkmark.seal.fill" : diagnosis.bottleneck == .none ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 30))
-                    .foregroundStyle(diagnosis.bottleneck == .none ? .green : .orange)
+                    .foregroundStyle(diagnosis.isClear ? .green : diagnosis.bottleneck == .none ? .yellow : .orange)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Why is my Mac slow?").font(.title2.weight(.semibold))
                     Text(diagnosis.verdict).font(.title3)

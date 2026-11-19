@@ -36,6 +36,27 @@ struct SlowdownTests {
         #expect(d.causes.contains { $0.kind == .cpuHog })
     }
 
+    @Test func swappingImpactScalesWithVolumeNotPageCount() {
+        // ~500 page-outs/min × 16 KB ≈ 8 MB/min: light, must not be "high impact" or contradict an all-clear.
+        let light = Fixture.history(minutes: 30).enumerated().map { i, h -> HistorySample in
+            var x = h; x.swapouts = UInt64(i) * 500; return x
+        }
+        var calm = Fixture.snapshot(cpu: Fixture.cpu(total: 5, load: [1, 1, 1]))
+        calm.memory?.swapouts = light.last!.swapouts!     // cumulative counter continues from history
+        let d = SlowdownDetective.diagnose(.init(snapshot: calm, history: light))
+        let swap = d.causes.first { $0.kind == .swapping }
+        #expect(swap?.impact == .low)
+        #expect(d.isClear)
+        #expect((d.pressure["memory"] ?? 100) < 20)
+        // ~8000 page-outs/min ≈ 125 MB/min: heavy.
+        let heavy = light.enumerated().map { i, h -> HistorySample in var x = h; x.swapouts = UInt64(i) * 8000; return x }
+        var busy = Fixture.snapshot()
+        busy.memory?.swapouts = heavy.last!.swapouts!
+        let d2 = SlowdownDetective.diagnose(.init(snapshot: busy, history: heavy))
+        #expect(d2.causes.first { $0.kind == .swapping }?.impact == .high)
+        #expect(!d2.isClear)
+    }
+
     @Test func moderateCPUIsNotCalledSaturated() {
         let d = SlowdownDetective.diagnose(.init(snapshot: Fixture.snapshot(cpu: Fixture.cpu(total: 62, load: [30, 20, 10]))))
         #expect(d.bottleneck == .cpu)
