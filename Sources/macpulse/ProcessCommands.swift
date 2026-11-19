@@ -33,11 +33,12 @@ struct ProcessCommands {
         let limit = try args.int("limit", 25)
         let shown = limit == 0 ? procs : Array(procs.prefix(limit))
         if json { print(JSON.string(shown)); return 0 }
-        var t = Table(["PID", "PPID", "Process", "CPU", "Memory", "Threads", "Runtime", "User", "Category"],
-                      aligns: [.right, .right, .left, .right, .right, .right, .right, .left, .left], flexible: 2)
+        var t = Table(["PID", "PPID", "Process", "CPU", "Memory", "Power", "Wakeups/s", "Runtime", "User", "Category"],
+                      aligns: [.right, .right, .left, .right, .right, .right, .right, .right, .left, .left], flexible: 2)
         for p in shown {
             t.add([String(p.pid), String(p.ppid), p.name, Format.percent(p.cpuPercent, digits: 1),
-                   p.accessible ? Format.memory(p.footprint) : Style.dim("n/a"), p.threads.map(String.init) ?? "—",
+                   p.accessible ? Format.memory(p.footprint) : Style.dim("n/a"),
+                   p.powerWatts.map { String(format: "%.2f W", $0) } ?? "—", p.wakeupsPerSecond.map { String(Int($0)) } ?? "—",
                    Format.duration(p.runtime), p.user, p.category.rawValue])
         }
         print(t.render())

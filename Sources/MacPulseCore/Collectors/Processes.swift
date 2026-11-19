@@ -44,6 +44,14 @@ public struct ProcessRecord: Codable, Sendable, Identifiable, Hashable {
     public var threads: Int?
     public var diskBytesRead: UInt64?
     public var diskBytesWritten: UInt64?
+    /// Cumulative energy the kernel has accounted to this process (rusage `ri_energy_nj`), nanojoules.
+    public var energyNanojoules: UInt64? = nil
+    /// Average power over the last sampling interval, watts (delta of `energyNanojoules`).
+    public var powerWatts: Double? = nil
+    /// Cumulative idle + interrupt wakeups since start.
+    public var wakeupsTotal: UInt64? = nil
+    /// Wakeups per second over the last interval — frequent wakeups keep the CPU out of low-power states.
+    public var wakeupsPerSecond: Double? = nil
 
     public var id: String { "\(pid)-\(startMicros)" }
     public var runtime: TimeInterval { Date().timeIntervalSince(startTime) }
@@ -115,10 +123,10 @@ public enum ProcessCollector {
         return proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, size) == size ? info : nil
     }
 
-    static func rusage(_ pid: Int32) -> rusage_info_v4? {
-        var info = rusage_info_v4()
+    static func rusage(_ pid: Int32) -> rusage_info_v6? {
+        var info = rusage_info_v6()
         let rc = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) }
         }
         return rc == 0 ? info : nil
     }
@@ -190,14 +198,17 @@ public enum ProcessCollector {
                 cpuTimeSeconds: cpuNs.map { Double($0) / 1e9 },
                 footprint: ru.map { $0.ri_phys_footprint }, residentSize: task.map { $0.pti_resident_size },
                 threads: task.map { Int($0.pti_threadnum) },
-                diskBytesRead: ru.map { $0.ri_diskio_bytesread }, diskBytesWritten: ru.map { $0.ri_diskio_byteswritten })
+                diskBytesRead: ru.map { $0.ri_diskio_bytesread }, diskBytesWritten: ru.map { $0.ri_diskio_byteswritten },
+                energyNanojoules: ru.map { $0.ri_energy_nj },
+                wakeupsTotal: ru.map { $0.ri_pkg_idle_wkups &+ $0.ri_interrupt_wkups })
         }
     }
 }
 
-/// Computes per-process CPU % from the delta of cumulative CPU time between two listings.
+/// Computes per-process CPU %, power and wakeup rate from deltas of cumulative counters between two listings.
 public struct ProcessSampler: Sendable {
-    private var previous: [ProcessIdentity: Double] = [:]
+    struct Counters: Sendable { var cpu: Double?; var energy: UInt64?; var wakeups: UInt64? }
+    private var previous: [ProcessIdentity: Counters] = [:]
     private var previousTime: Date?
 
     public init() {}
@@ -206,15 +217,17 @@ public struct ProcessSampler: Sendable {
         let now = Date()
         var records = ProcessCollector.list()
         let interval = previousTime.map { now.timeIntervalSince($0) } ?? 0
-        var next: [ProcessIdentity: Double] = [:]
+        var next: [ProcessIdentity: Counters] = [:]
         next.reserveCapacity(records.count)
         for i in records.indices {
-            guard let cpu = records[i].cpuTimeSeconds else { continue }
-            let id = records[i].identity
-            next[id] = cpu
-            if interval > 0.1, let prev = previous[id] {
-                records[i].cpuPercent = max(0, (cpu - prev) / interval * 100)
-            }
+            let r = records[i]
+            guard r.accessible else { continue }
+            let id = r.identity
+            next[id] = Counters(cpu: r.cpuTimeSeconds, energy: r.energyNanojoules, wakeups: r.wakeupsTotal)
+            guard interval > 0.1, let prev = previous[id] else { continue }
+            if let a = prev.cpu, let b = r.cpuTimeSeconds { records[i].cpuPercent = max(0, (b - a) / interval * 100) }
+            if let a = prev.energy, let b = r.energyNanojoules, b >= a { records[i].powerWatts = Double(b - a) / 1e9 / interval }
+            if let a = prev.wakeups, let b = r.wakeupsTotal, b >= a { records[i].wakeupsPerSecond = Double(b - a) / interval }
         }
         previous = next
         previousTime = now

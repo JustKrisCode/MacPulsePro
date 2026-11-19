@@ -6,7 +6,19 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Slowdown detective** (`macpulse why`, app ⌘Y, menu bar "Why slow?"): bottleneck, per-resource pressure, baseline
+  comparison against this Mac's history, ranked causes with evidence and suggestions.
+- **Energy**: per-process and per-app power (W) and wakeups/s from kernel energy accounting (`rusage v6`); new Energy
+  section, Power/Wakeups columns in Processes, `macpulse energy`, `--sort energy|wakeups`.
+- **Disk growth tracker**: folder-size scans stored in SQLite (60 kept), comparison including swap files and
+  unattributed system change; `macpulse disk growth`, Storage › Growth tab; daily scan in the background monitor.
+- **Workload gate**: `macpulse ready` and `macpulse run --when-ready -- COMMAND` (exec, no shell; job exit code preserved).
 - MIT license, contributing guide, security policy, code of conduct, issue/PR templates and CI workflow.
+- 14 new tests (104 total).
+
+### Fixed
+- `UInt64 → Double` conversions via `map(Double.init)` resolved to `Double(bitPattern:)`, so history and baseline
+  values showed as "0 B". Every occurrence is replaced and covered by a regression test.
 
 ## [1.0.0] — 2026-11-19
 

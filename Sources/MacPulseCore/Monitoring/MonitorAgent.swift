@@ -18,6 +18,9 @@ public actor MonitorAgent {
     private var recent: [HistorySample] = []
     private var processHistory: [ProcessIdentity: [ProcessHistoryPoint]] = [:]
     private var lastPrune = Date.distantPast
+    private var lastGrowthScan = Date.distantPast
+    /// Disable for tests or very constrained setups.
+    public var growthScansEnabled = true
     private var lastAlert: [String: Date] = [:]
     public private(set) var stats = Stats()
     private let notify: @Sendable (MonitorAlert) -> Void
@@ -31,6 +34,7 @@ public actor MonitorAgent {
     }
 
     public func updateConfig(_ c: MacPulseConfig) { config = c }
+    public func setGrowthScans(_ on: Bool) { growthScansEnabled = on }
 
     public func currentInterval(onBattery: Bool) -> TimeInterval {
         let base = max(10, config.sampleIntervalSeconds)
@@ -76,6 +80,15 @@ public actor MonitorAgent {
             _ = try? store.recordEvent(kind: alert.kind, severity: alert.severity, title: alert.title, detail: alert.detail)
             if config.notificationsEnabled { notify(alert) }
             alerts.append(alert)
+        }
+        // Daily disk-growth scan (background priority) so "where did my space go?" has history.
+        if growthScansEnabled && start.timeIntervalSince(lastGrowthScan) > 86400 {
+            lastGrowthScan = start
+            let latest = (try? store.growthScans(limit: 1))?.first?.timestamp ?? .distantPast
+            if start.timeIntervalSince(latest) > 86400 {
+                let scan = await Task.detached(priority: .background) { GrowthTracker.scan() }.value
+                try? store.recordGrowthScan(scan)
+            }
         }
         if start.timeIntervalSince(lastPrune) > 6 * 3600 {
             _ = try? store.prune(retentionDays: config.retentionDays, maxSamples: config.maxSampleRows)

@@ -50,8 +50,9 @@ struct ProcessesView: View {
                         TableColumn("Memory", value: \.memorySort) { p in
                             Text(p.accessible ? Format.memory(p.footprint) : "n/a").monospacedDigit().foregroundStyle(p.accessible ? .primary : .tertiary)
                         }.width(84)
+                        TableColumn("Power", value: \.powerSort) { Text($0.powerWatts.map { String(format: "%.2f W", $0) } ?? "—").monospacedDigit() }.width(64)
+                        TableColumn("Wakeups", value: \.wakeupSort) { Text($0.wakeupsPerSecond.map { "\(Int($0))/s" } ?? "—").monospacedDigit() }.width(70)
                         TableColumn("Runtime", value: \.startSort) { Text(Format.duration($0.runtime)).monospacedDigit() }.width(80)
-                        TableColumn("Threads") { Text($0.threads.map(String.init) ?? "—").monospacedDigit() }.width(60)
                         TableColumn("User", value: \.user) { Text($0.user).foregroundStyle(.secondary) }.width(90)
                         TableColumn("Kind") { Text($0.category.rawValue).foregroundStyle(.secondary) }.width(110)
                     }
@@ -122,6 +123,9 @@ struct ProcessInspectorView: View {
                     StatRow(label: "Memory (footprint)", value: Format.memory(record.footprint), provenance: record.accessible ? .measured : .unavailable)
                     StatRow(label: "Resident", value: Format.memory(record.residentSize))
                     StatRow(label: "Threads", value: record.threads.map(String.init) ?? "—")
+                    StatRow(label: "Power", value: record.powerWatts.map { String(format: "%.2f W", $0) } ?? "—", provenance: record.powerWatts == nil ? nil : .measuredUndocumented)
+                    StatRow(label: "Wakeups", value: record.wakeupsPerSecond.map { "\(Int($0))/s" } ?? "—")
+                    StatRow(label: "Energy since start", value: record.energyNanojoules.map { String(format: "%.1f J", Double($0) / 1e9) } ?? "—")
                     StatRow(label: "Started", value: record.startTime.formatted(date: .abbreviated, time: .shortened))
                     StatRow(label: "Runtime", value: Format.duration(record.runtime))
                     StatRow(label: "Disk read / written", value: "\(Format.bytes(record.diskBytesRead)) / \(Format.bytes(record.diskBytesWritten))")

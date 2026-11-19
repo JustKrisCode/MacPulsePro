@@ -18,7 +18,7 @@ public struct SystemSnapshot: Codable, Sendable {
 }
 
 public enum ProcessSortKey: String, CaseIterable, Sendable {
-    case cpu, memory, runtime, pid, name
+    case cpu, memory, runtime, pid, name, energy, wakeups
 
     public var comparator: @Sendable (ProcessRecord, ProcessRecord) -> Bool {
         switch self {
@@ -27,6 +27,8 @@ public enum ProcessSortKey: String, CaseIterable, Sendable {
         case .runtime: { $0.startTime < $1.startTime }
         case .pid: { $0.pid < $1.pid }
         case .name: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .energy: { ($0.powerWatts ?? -1) > ($1.powerWatts ?? -1) }
+        case .wakeups: { ($0.wakeupsPerSecond ?? -1) > ($1.wakeupsPerSecond ?? -1) }
         }
     }
 }

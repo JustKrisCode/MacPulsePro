@@ -13,14 +13,16 @@ struct StorageView: View {
                 Text("Cleanup").tag(0)
                 Text("Large Files").tag(1)
                 Text("Duplicates").tag(2)
+                Text("Growth").tag(3)
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 380)
+            .frame(maxWidth: 480)
             .padding(.top, 14)
             switch tab {
             case 0: CleanupPane()
             case 1: LargeFilesPane()
-            default: DuplicatesPane()
+            case 2: DuplicatesPane()
+            default: GrowthPane()
             }
         }
     }

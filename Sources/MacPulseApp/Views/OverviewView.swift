@@ -10,6 +10,8 @@ struct OverviewView: View {
                 HStack(alignment: .top) {
                     SectionHeader(title: "Overview",
                                   subtitle: "\(s.system.chip) · macOS \(s.system.osVersion) · \(Format.memory(s.system.physicalMemory)) · up \(Format.duration(s.system.uptimeSeconds))")
+                    Button { model.diagnose() } label: { Label("Why is my Mac slow?", systemImage: "stethoscope") }
+                        .buttonStyle(.borderedProminent).controlSize(.large)
                     if let h = model.health { HealthBadge(report: h) }
                 }
                 HStack(spacing: 16) {

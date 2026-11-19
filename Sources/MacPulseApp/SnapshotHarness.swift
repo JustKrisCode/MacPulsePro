@@ -25,6 +25,14 @@ enum SnapshotHarness {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 capture(name: section.rawValue, dir: dir)
             }
+            model.selection = .overview
+            model.diagnose()
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if let sheet = NSApp.windows.first(where: { $0.isVisible && $0.isSheet }), let v = sheet.contentView?.superview ?? sheet.contentView,
+               let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                v.cacheDisplay(in: v.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/why.png"))
+            }
             NSApp.terminate(nil)
         }
     }

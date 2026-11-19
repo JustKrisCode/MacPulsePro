@@ -96,6 +96,7 @@ struct MonitoringTests {
         cfg.notificationsEnabled = true
         let box = AlertBox()
         let agent = MonitorAgent(store: store, config: cfg, notify: { box.add($0) })
+        await agent.setGrowthScans(false)
         let first = await agent.tick()
         let second = await agent.tick()
         #expect(first.contains { $0.kind == "low-disk" })
@@ -114,6 +115,7 @@ struct MonitoringTests {
         cfg.thresholds.lowDiskFreePercent = 100
         let box = AlertBox()
         let agent = MonitorAgent(store: store, config: cfg, notify: { box.add($0) })
+        await agent.setGrowthScans(false)
         let alerts = await agent.tick()
         #expect(!alerts.isEmpty && box.count == 0)
     }

@@ -15,6 +15,19 @@ unavailable), and never deletes or terminates anything without validated, explic
 - **Opt-in background monitor** (a per-user LaunchAgent), SQLite history with retention, and explainable alerts
 - No third-party dependencies, no network access, no administrator rights
 
+### What sets it apart
+
+- **"Why is my Mac slow?"** (`macpulse why`, ⌘Y in the app) finds the current bottleneck, compares the present with
+  your Mac's own baseline from its history, and names the specific causes with evidence: CPU-heavy apps, memory
+  hogs, swapping, heavy processes started recently, memory growth, heat, GPU-heavy tabs, wakeup storms.
+- **Energy per app**: power (W) per process and per app from the kernel's energy accounting, plus CPU wakeups per
+  second. It answers "what is draining my battery?" without `sudo powermetrics`.
+- **Disk growth tracking**: measured folder sizes over time, including swap files, so "where did my free space
+  go?" has a measured answer. The background monitor records one scan a day.
+- **Workload gate**: `macpulse run --when-ready -- make build` starts a heavy job only once the Mac is cool, memory
+  pressure is normal and the CPU has headroom. This is useful on fanless Macs, where overlapping heavy jobs throttle
+  each other.
+
 ## Requirements
 
 - macOS 14 or later (developed and tested on macOS 27.2, Apple M4)
@@ -23,7 +36,7 @@ unavailable), and never deletes or terminates anything without validated, explic
 ## Build, test, install
 
 ```sh
-swift test                      # 90 tests: safety, parsers, analysis, persistence, live collectors, overhead
+swift test                      # 104 tests: safety, parsers, analysis, persistence, live collectors, overhead
 scripts/build-app.sh            # → build/MacPulse Pro.app  (bundles the CLI at Contents/MacOS/macpulse)
 UNIVERSAL=1 scripts/build-app.sh  # arm64 + x86_64 (Intel)
 scripts/install.sh              # → ~/Applications/MacPulse Pro.app and ~/.local/bin/macpulse (no sudo)
@@ -53,6 +66,11 @@ macpulse monitor install|uninstall|status|run
 macpulse history [--hours 24] [--metric cpu] [--csv]
 macpulse events                     recorded alerts
 macpulse recommend [--with-storage] ranked, evidence-based recommendations
+macpulse why                        why is my Mac slow? bottleneck, baseline comparison, named causes (exit 3 if a bottleneck)
+macpulse energy [--sample 3]        power per app (W) and CPU wakeups
+macpulse ready [--cpu 60] [--allow-fair]       exit 0 if there is headroom for heavy work, 10 if not
+macpulse run --when-ready [--max-wait 30m] [--run-anyway] -- COMMAND ARGS…   start a job once the Mac is ready
+macpulse disk growth [--scan] [--since 7d] [--personal]  what grew on disk, including swap files
 macpulse disk analyze [--personal]  categorized candidates with IDs (read-only)
 macpulse disk clean --select ID,ID  dry run (default)
 macpulse disk clean --select ID,ID --mode trash|delete --apply   validated cleanup after confirmation
@@ -60,7 +78,7 @@ macpulse disk clean --all-safe ...  every SAFE, unblocked item
 macpulse disk large [PATH] [--min-size 2GB]
 macpulse disk duplicates PATH
 macpulse disk history               cleanup audit log
-macpulse processes [--sort cpu|memory|runtime] [--filter TEXT] [--limit N]
+macpulse processes [--sort cpu|memory|energy|wakeups|runtime] [--filter TEXT] [--limit N]
 macpulse processes tree [--pid PID]
 macpulse processes inspect PID
 macpulse processes terminate PID [--force]
@@ -69,7 +87,7 @@ macpulse config show | set KEY VALUE | path | reset
 ```
 
 Global options are `--json`, `--no-color` (`NO_COLOR` is also honored) and `--yes` for non-interactive confirmation.
-Exit codes: `0` ok, `1` failure, `3` warnings present, `64` usage error, `69` unavailable, `75` busy (a cleanup is
+Exit codes: `0` ok, `1` failure, `3` warnings or bottleneck present, `10` not ready (`ready`), `64` usage error, `69` unavailable, `75` busy (a cleanup is
 already running), `77` refused by the safety policy or by permissions. With `--json`, errors are printed as
 `{"error":{"code","message"}}`.
 
@@ -120,6 +138,10 @@ See [docs/METRICS.md](docs/METRICS.md) for the full matrix. In short:
   duplicate views use the clone-aware private size (`ATTR_CMNEXT_PRIVATESIZE`).
 - Folders protected by macOS privacy controls (Safari, Mail, Trash, Downloads) are analyzed only when access is
   granted. MacPulse does not try to bypass these controls.
+- **Per-app energy** is the kernel's own accounting (`ri_energy_nj`). It mostly covers CPU-side energy, so the
+  total is lower than the battery's discharge rate (display, GPU and other devices are not fully attributed).
+- **Disk-growth scans** read most of the home folder. The first scan can take a few minutes; privacy-protected
+  folders are included only with `--personal`.
 - **MetricKit** reports only the app's own daily diagnostics, so it is not used.
 - Cache-ownership ("in use") detection matches bundle IDs and process names. A tool that runs as a generic
   interpreter (for example npm running as `node`) may not be detected; those caches are rebuildable by design.

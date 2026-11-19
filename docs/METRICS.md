@@ -14,7 +14,9 @@ Verified on macOS 27.2 (build 26B123), Apple M4 (4P+6E), as a non-admin user, wi
 | Swap used/total, swap-ins/outs | ✓ | measured | `vm.swapusage`, VM statistics |
 | Swap growth rate | ✓ (needs ≥10 min of history) | estimated | least-squares fit over the last hour |
 | Per-process CPU %, CPU time, threads | ✓ own user / ✗ other users | measured | `proc_pidinfo(PROC_PIDTASKINFO)` (mach ticks → ns via timebase) |
-| Per-process memory (physical footprint) | ✓ own user / ✗ other users | measured | `proc_pid_rusage(RUSAGE_INFO_V4)` |
+| Per-process memory (physical footprint) | ✓ own user / ✗ other users | measured | `proc_pid_rusage(RUSAGE_INFO_V6)` |
+| Per-process energy (cumulative) and power (W) | ✓ own user / ✗ other users | measured-undocumented | `proc_pid_rusage(RUSAGE_INFO_V6).ri_energy_nj` deltas (kernel accounting, mainly CPU-side) |
+| Per-process wakeups/s | ✓ own user | measured | `ri_pkg_idle_wkups + ri_interrupt_wkups` deltas |
 | Process start time (PID-reuse identity) | ✓ all | measured | `sysctl(KERN_PROC)` |
 | Process arguments, working directory | ✓ own user | measured | `KERN_PROCARGS2`, `PROC_PIDVNODEPATHINFO` |
 | Code-signature status | ✓ | measured | `SecStaticCodeCheckValidity` |
@@ -37,4 +39,7 @@ Verified on macOS 27.2 (build 26B123), Apple M4 (4P+6E), as a non-admin user, wi
 | Snapshot sizes | ✗ | unavailable | needs root |
 | Allocated vs. logical size | ✓ | measured | `fts` + `st_blocks` (hard links counted once) |
 | Clone-aware private size (per file) | ✓ APFS | measured | `getattrlist(ATTR_CMNEXT_PRIVATESIZE)` |
+| Folder growth over time | ✓ (on demand / daily in monitor) | measured | repeated `fts` allocated-size scans stored in SQLite |
+| Swap file size on disk | ✓ | measured | `vm.swapusage` total |
+| Slowdown diagnosis, resource pressure | ✓ | inferred | rules over the measured signals above (documented in code) |
 | MetricKit | ✗ (not applicable) | — | reports only the app's own diagnostics, daily |

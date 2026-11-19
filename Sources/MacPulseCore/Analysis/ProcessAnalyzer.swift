@@ -23,6 +23,9 @@ public struct AppGroup: Codable, Sendable, Identifiable {
     public var footprint: UInt64
     public var cpuPercent: Double
     public var category: ProcessCategory
+    /// Sum of member processes' power over the last interval (nil when no member reported energy).
+    public var powerWatts: Double? = nil
+    public var wakeupsPerSecond: Double = 0
     public var id: String { bundlePath ?? name }
 }
 
@@ -60,6 +63,8 @@ public enum ProcessAnalyzer {
             g.pids.append(r.pid)
             g.footprint += r.footprint ?? 0
             g.cpuPercent += r.cpuPercent ?? 0
+            if let p = r.powerWatts { g.powerWatts = (g.powerWatts ?? 0) + p }
+            g.wakeupsPerSecond += r.wakeupsPerSecond ?? 0
             if r.category == .application { g.category = .application }
             groups[key] = g
         }

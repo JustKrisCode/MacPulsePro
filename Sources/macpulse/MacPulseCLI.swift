@@ -51,6 +51,13 @@ MONITORING
   events [--hours N]             Alerts recorded by the background monitor
   recommend                      Ranked, evidence-based recommendations
 
+INSIGHTS
+  why                            Why is my Mac slow? Bottleneck, baseline comparison and named causes
+  energy [--sample SEC]          Power per app (W) and CPU wakeups — what drains the battery
+  ready [--cpu 60] [--allow-fair]          Exit 0 if the Mac has headroom for heavy work, 10 if not
+  run --when-ready [--max-wait 30m] [--cpu 60] [--allow-fair] [--run-anyway] -- COMMAND …
+                                 Start a heavy job only once the Mac is cool and has free memory
+
 STORAGE
   disk analyze [--personal] [--no-protected]   Categorized cleanup candidates (read-only)
   disk clean [--select ID,ID | --all-safe] [--mode trash|delete] [--apply] [--yes]
@@ -58,9 +65,10 @@ STORAGE
   disk large [PATH] [--min-size 1GB]           Largest files (clone-aware sizes)
   disk duplicates PATH [--min-size 1MB]        Identical files by SHA-256
   disk history                   Cleanup audit log (estimated vs measured bytes)
+  disk growth [--scan] [--since 7d] [--personal]   What grew on disk, incl. swap files
 
 PROCESSES
-  processes [--sort cpu|memory|runtime|pid|name] [--limit N] [--filter TEXT] [--all]
+  processes [--sort cpu|memory|energy|wakeups|runtime|pid|name] [--limit N] [--filter TEXT] [--all]
   processes tree [--pid PID]     Parent/child tree
   processes inspect PID          Details, arguments (secrets redacted), signature, ancestry
   processes terminate PID [--force] [--yes]    Graceful quit with pid-reuse protection
@@ -75,5 +83,5 @@ GLOBAL OPTIONS
   --verbose     Extra diagnostics
 
 EXIT CODES
-  0 ok · 1 failure · 3 warnings present (status/doctor) · 64 usage · 69 unavailable · 75 busy · 77 refused/permission
+  0 ok · 1 failure · 3 warnings present (status/why) · 10 not ready · 64 usage · 69 unavailable · 75 busy · 77 refused/permission
 """

@@ -6,13 +6,13 @@ import ServiceManagement
 import UserNotifications
 
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, health, memory, cpu, gpu, thermal, storage, processes, monitoring, cleanupHistory, settings
+    case overview, health, memory, cpu, gpu, thermal, energy, storage, processes, monitoring, cleanupHistory, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .overview: "Overview"; case .health: "System Health"; case .memory: "Memory"; case .cpu: "CPU"
-        case .gpu: "GPU"; case .thermal: "Thermal"; case .storage: "Storage"; case .processes: "Processes"
+        case .gpu: "GPU"; case .thermal: "Thermal"; case .energy: "Energy"; case .storage: "Storage"; case .processes: "Processes"
         case .monitoring: "Monitoring"; case .cleanupHistory: "Cleanup History"; case .settings: "Settings"
         }
     }
@@ -20,7 +20,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
     var symbol: String {
         switch self {
         case .overview: "square.grid.2x2"; case .health: "heart.text.square"; case .memory: "memorychip"
-        case .cpu: "cpu"; case .gpu: "cube.transparent"; case .thermal: "thermometer.medium"
+        case .cpu: "cpu"; case .gpu: "cube.transparent"; case .thermal: "thermometer.medium"; case .energy: "bolt"
         case .storage: "internaldrive"; case .processes: "list.bullet.rectangle"; case .monitoring: "waveform.path.ecg"
         case .cleanupHistory: "clock.arrow.circlepath"; case .settings: "gearshape"
         }
@@ -65,6 +65,10 @@ final class AppModel {
     var banner: String?
     var mainWindowVisible = true
     var selection: SidebarSection? = .overview
+    var diagnosis: SlowdownDiagnosis?
+    var growthScans: [GrowthScan] = []
+    var growthScanning = false
+    var energyHistory: [SeriesPointValue] = []
 
     let store: HistoryStore?
     private let sampler = SystemSampler()
@@ -132,6 +136,11 @@ final class AppModel {
 
         if freshProcesses {
             appGroups = ProcessAnalyzer.appGroups(snap.processes)
+            let watts = snap.processes.compactMap(\.powerWatts).reduce(0, +)
+            if snap.processes.contains(where: { $0.powerWatts != nil }) {
+                energyHistory.append(SeriesPointValue(date: snap.timestamp, value: watts))
+                if energyHistory.count > 300 { energyHistory.removeFirst(energyHistory.count - 300) }
+            }
             for p in snap.processes where (p.cpuPercent ?? 0) > 2 || (p.footprint ?? 0) > 300_000_000 {
                 processHistory[p.identity, default: []].append(ProcessHistoryPoint(timestamp: snap.timestamp, cpu: p.cpuPercent, footprint: p.footprint))
             }
@@ -247,6 +256,31 @@ final class AppModel {
         return result
     }
 
+    // MARK: Insights
+
+    func diagnose() {
+        guard let snap = snapshot else { return }
+        let input = SlowdownDetective.Input(snapshot: snap, history: stored + live, processHistory: processHistory,
+                                            findings: findings, thresholds: config.thresholds)
+        Task.detached(priority: .userInitiated) {
+            let d = SlowdownDetective.diagnose(input)
+            await MainActor.run { self.diagnosis = d }
+        }
+    }
+
+    func loadGrowthScans() { growthScans = (try? store?.growthScans()) ?? [] }
+
+    func runGrowthScan(includePersonal: Bool) {
+        guard !growthScanning else { return }
+        growthScanning = true
+        let store = self.store
+        Task.detached(priority: .utility) {
+            let scan = GrowthTracker.scan(includePersonal: includePersonal)
+            try? store?.recordGrowthScan(scan)
+            await MainActor.run { self.growthScanning = false; self.loadGrowthScans() }
+        }
+    }
+
     // MARK: Processes
 
     func terminate(_ r: ProcessRecord, force: Bool) async -> TerminationOutcome {
@@ -320,7 +354,11 @@ final class AppModel {
     }
 }
 
+struct SeriesPointValue: Sendable { let date: Date; let value: Double }
+
 extension ProcessRecord {
+    var powerSort: Double { powerWatts ?? -1 }
+    var wakeupSort: Double { wakeupsPerSecond ?? -1 }
     var cpuSort: Double { cpuPercent ?? -1 }
     var memorySort: UInt64 { footprint ?? 0 }
     var startSort: Double { startTime.timeIntervalSince1970 }

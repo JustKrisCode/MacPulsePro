@@ -116,6 +116,11 @@ struct MenuBarPanel: View {
                     openWindow(id: "main")
                     NSApp.activate(ignoringOtherApps: true)
                 }
+                Button("Why slow?") {
+                    openWindow(id: "main")
+                    NSApp.activate(ignoringOtherApps: true)
+                    model.diagnose()
+                }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }

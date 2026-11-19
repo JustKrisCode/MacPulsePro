@@ -41,6 +41,8 @@ struct AppCommands: Commands {
         CommandGroup(after: .toolbar) {
             Button("Refresh Now") { Task { await model.refresh() } }
                 .keyboardShortcut("r", modifiers: .command)
+            Button("Why Is My Mac Slow?") { model.diagnose() }
+                .keyboardShortcut("y", modifiers: .command)
             Divider()
             ForEach(Array(SidebarSection.allCases.prefix(9).enumerated()), id: \.element) { i, section in
                 Button(section.title) { model.selection = section }
@@ -90,7 +92,7 @@ struct RootView: View {
         NavigationSplitView {
             List(selection: $model.selection) {
                 Section("Monitor") {
-                    ForEach([SidebarSection.overview, .health, .memory, .cpu, .gpu, .thermal]) { SidebarRow(section: $0) }
+                    ForEach([SidebarSection.overview, .health, .memory, .cpu, .gpu, .thermal, .energy]) { SidebarRow(section: $0) }
                 }
                 Section("Maintain") {
                     ForEach([SidebarSection.storage, .processes, .monitoring, .cleanupHistory]) { SidebarRow(section: $0) }
@@ -106,6 +108,7 @@ struct RootView: View {
                 detail(model.selection ?? .overview)
             }
         }
+        .sheet(item: $model.diagnosis) { d in DiagnosisSheet(diagnosis: d) { model.diagnosis = nil } }
         .onAppear { model.mainWindowVisible = true; SnapshotHarness.runIfRequested(model: model) }
         .onDisappear { model.mainWindowVisible = false }
     }
@@ -119,6 +122,7 @@ struct RootView: View {
         case .cpu: CPUView()
         case .gpu: GPUView()
         case .thermal: ThermalView()
+        case .energy: EnergyView()
         case .storage: StorageView()
         case .processes: ProcessesView()
         case .monitoring: MonitoringView()
