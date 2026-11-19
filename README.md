@@ -1,5 +1,10 @@
 # MacPulse Pro
 
+[![CI](https://github.com/JustKrisCode/MacPulsePro/actions/workflows/ci.yml/badge.svg)](https://github.com/JustKrisCode/MacPulsePro/actions/workflows/ci.yml)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+![Swift 6](https://img.shields.io/badge/Swift-6-orange)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A native macOS system monitor, diagnostics tool and **safe** optimizer, built with Swift 6 and SwiftUI.
 It measures what macOS actually exposes, labels every value with its provenance (measured, estimated, inferred or
 unavailable), and never deletes or terminates anything without validated, explicit confirmation.
@@ -125,3 +130,23 @@ See [docs/METRICS.md](docs/METRICS.md) for the full matrix. In short:
 - [Metric availability matrix](docs/METRICS.md)
 - [Safety and threat model](docs/SAFETY.md)
 - [Health score method](docs/HEALTH_SCORE.md)
+
+## Privacy
+
+MacPulse Pro makes no network connections and collects no telemetry. All history, configuration and the cleanup
+audit log stay in `~/Library/Application Support/MacPulsePro` (file mode 0600). Process arguments that look like
+credentials are redacted before they are displayed, and reports never include process arguments.
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), and report security issues privately as
+described in [SECURITY.md](SECURITY.md). This project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Kristiyan Kiryazov.
+
+MacPulse Pro is provided as is. It is designed to be conservative, but you are responsible for the cleanup and
+termination actions you confirm.
+
