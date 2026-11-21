@@ -8,6 +8,32 @@ import SwiftUI
 enum SnapshotHarness {
     static var directory: String? { ProcessInfo.processInfo.environment["MACPULSE_SNAPSHOT_DIR"] }
 
+    /// Screenshots are meant for the README, so they must not reveal what else runs on the capturing Mac:
+    /// keep only macOS system processes and MacPulse itself, and hide the account name and home folder.
+    static func scrubbed(_ snap: SystemSnapshot) -> SystemSnapshot {
+        guard directory != nil else { return snap }
+        let home = NSHomeDirectory(), account = NSUserName()
+        let systemPrefixes = ["/System/", "/usr/", "/sbin/", "/bin/", "/Library/Apple/"]
+        func isShareable(_ p: ProcessRecord) -> Bool {
+            if p.name.hasPrefix("MacPulse") { return true }
+            if p.bundleIdentifier?.hasPrefix("com.apple.") == true { return true }
+            guard let path = p.path else { return p.uid == 0 }
+            return systemPrefixes.contains { path.hasPrefix($0) }
+        }
+        var s = snap
+        s.processes = s.processes.filter(isShareable).map { p in
+            var p = p
+            if p.user == account { p.user = "user" }
+            // System XPC services name their host app in parentheses, e.g. "Open and Save Panel Service (SomeApp)".
+            if let open = p.name.firstIndex(of: "(") { p.name = p.name[..<open].trimmingCharacters(in: .whitespaces) }
+            if let path = p.path, path.hasPrefix(home) { p.path = "~" + path.dropFirst(home.count) }
+            return p
+        }
+        let kept = Set(s.processes.map(\.pid))
+        s.gpu.processes = s.gpu.processes.filter { kept.contains($0.pid) }
+        return s
+    }
+
     static func runIfRequested(model: AppModel) {
         // Benchmark aid: open the app directly on a given section.
         if let start = ProcessInfo.processInfo.environment["MACPULSE_START_SECTION"], let s = SidebarSection(rawValue: start) {
@@ -19,7 +45,7 @@ enum SnapshotHarness {
         if appearance == "dark" { NSApp.appearance = NSAppearance(named: .darkAqua) }
         Task {
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? await Task.sleep(nanoseconds: 7_000_000_000)   // let a few samples accumulate
+            try? await Task.sleep(nanoseconds: 40_000_000_000)   // let a few samples (incl. CPU deltas) accumulate
             if ProcessInfo.processInfo.environment["MACPULSE_SNAPSHOT_SCAN"] == "1" {
                 model.scanStorage(includePersonal: false)
                 while model.storageScanning { try? await Task.sleep(nanoseconds: 300_000_000) }

@@ -35,6 +35,10 @@ MACPULSE_HOME=/tmp/mp MACPULSE_SNAPSHOT_DIR=/tmp/shots MACPULSE_SNAPSHOT_APPEARA
 # MACPULSE_SNAPSHOT_SCAN=1 also runs a (read-only) storage scan first
 ```
 
+In snapshot mode the process list is reduced to macOS system processes and MacPulse itself, and the account name
+and home folder are masked, so the images in `docs/screenshots/` do not reveal what else runs on the capturing Mac.
+Storage scans (`MACPULSE_SNAPSHOT_SCAN=1`) are **not** scrubbed. Check those images before publishing them.
+
 ## Ground rules
 
 These are the project's non-negotiables; PRs that break them will not be merged.

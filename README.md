@@ -9,6 +9,8 @@ A native macOS system monitor, diagnostics tool and **safe** optimizer, built wi
 It measures what macOS actually exposes, labels every value with its provenance (measured, estimated, inferred or
 unavailable), and never deletes or terminates anything without validated, explicit confirmation.
 
+![MacPulse Pro overview: health score, CPU, memory, GPU, disk and thermal gauges with 10-minute history](docs/screenshots/overview.png)
+
 - **SwiftUI app** with 11 sections, Swift Charts history, dark and light mode, and keyboard shortcuts
 - **Menu bar companion** showing configurable live metrics
 - **`macpulse` CLI** with the same engine and safety logic as the app, plus JSON output and exit codes for scripting
@@ -35,6 +37,48 @@ unavailable), and never deletes or terminates anything without validated, explic
 - **Workload gate**: `macpulse run --when-ready -- make build` starts a heavy job only once the Mac is cool, memory
   pressure is normal and the CPU has headroom. This is useful on fanless Macs, where overlapping heavy jobs throttle
   each other.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![System Health: every deducted point with its reason](docs/screenshots/health.png) | ![Why is my Mac slow? Resource pressure, baseline comparison and likely causes](docs/screenshots/why.png) |
+| **System Health**: every deducted point is listed with its reason | **Why is my Mac slow?** (⌘Y): bottleneck, baseline and named causes |
+| ![Memory: pressure, composition, swap and the largest apps](docs/screenshots/memory.png) | ![CPU: per-core load for performance and efficiency cores](docs/screenshots/cpu.png) |
+| **Memory**: pressure, composition, swap and the largest apps | **CPU**: per-core load split into P- and E-cores, with history |
+| ![Processes: CPU, memory, power, wakeups and runtime per process](docs/screenshots/processes.png) | ![Energy: power per app and CPU wakeups](docs/screenshots/energy.png) |
+| **Processes**: inspect before acting, PID-reuse-safe termination | **Energy**: watts per app and wakeups per second |
+| ![Thermal: macOS thermal pressure against CPU and GPU load](docs/screenshots/thermal.png) | ![Monitoring: optional background monitor with history](docs/screenshots/monitoring.png) |
+| **Thermal**: thermal pressure against CPU and GPU load | **Monitoring**: opt-in background history and alerts |
+
+## Quick start
+
+```sh
+git clone https://github.com/JustKrisCode/MacPulsePro.git
+cd MacPulsePro
+scripts/build-app.sh      # release build → build/MacPulse Pro.app
+scripts/install.sh        # installs the app and the `macpulse` CLI, no sudo
+open ~/Applications/MacPulse\ Pro.app
+macpulse status           # make sure ~/.local/bin is on your PATH
+```
+
+**First launch.** The app is ad-hoc signed, not notarized, because it is built on your own Mac. If macOS still
+refuses to open it, right-click the app in Finder and choose **Open**, or allow it in *System Settings › Privacy &
+Security*. MacPulse needs no special permissions to monitor; it asks for nothing at launch.
+
+**Keyboard shortcuts.** ⌘1–⌘9 switch sections, ⌘Y runs "Why is my Mac slow?", ⌘R refreshes, ⇧⌘E exports a report
+(Markdown, JSON, CSV or HTML).
+
+**Typical uses**
+
+- *"My Mac feels slow"*: open the app and press ⌘Y, or run `macpulse why` in a terminal.
+- *"What drains my battery?"*: the Energy section, or `macpulse energy`.
+- *"Where did my disk space go?"*: Storage › Growth, or `macpulse disk growth --scan`, then the same command a few
+  days later.
+- *"Free up space safely"*: Storage › Cleanup › Analyze. Everything is read-only until you select items and confirm
+  them. You can choose Trash instead of permanent deletion, and every action is written to Cleanup History.
+- *"Keep an eye on things over time"*: Monitoring › enable the background monitor (one light sample per minute, local
+  SQLite only).
 
 ## Requirements
 

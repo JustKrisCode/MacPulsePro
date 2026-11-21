@@ -130,7 +130,7 @@ final class AppModel {
                     Double(t1 - t0) / 1e6, Double(t2 - t1) / 1e6, withProcesses ? 1 : 0).utf8))
             }
         }
-        var merged = snap
+        var merged = SnapshotHarness.scrubbed(snap)
         if let previous = snapshot {
             if !withProcesses { merged.processes = previous.processes }   // keep the last table between full reads
             if !withGPU { merged.gpu.processes = previous.gpu.processes; merged.gpu.processProvenance = previous.gpu.processProvenance; merged.gpu.notes = previous.gpu.notes }
