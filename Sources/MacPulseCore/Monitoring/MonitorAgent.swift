@@ -55,8 +55,10 @@ public actor MonitorAgent {
 
         if withProcesses && !snap.processes.isEmpty {
             try? store.recordProcesses(snap.processes, at: snap.timestamp)
-            for p in snap.processes where (p.cpuPercent ?? 0) > 5 || (p.footprint ?? 0) > 200_000_000 {
-                processHistory[p.identity, default: []].append(ProcessHistoryPoint(timestamp: snap.timestamp, cpu: p.cpuPercent, footprint: p.footprint))
+            for p in snap.processes where (p.cpuPercent ?? 0) > 5 || (p.footprint ?? 0) > 200_000_000
+                || (p.wakeupsPerSecond ?? 0) > 300 || (p.powerWatts ?? 0) > 0.5 {
+                processHistory[p.identity, default: []].append(ProcessHistoryPoint(timestamp: snap.timestamp, cpu: p.cpuPercent, footprint: p.footprint,
+                                                                                   power: p.powerWatts, wakeups: p.wakeupsPerSecond))
             }
             let live = Set(snap.processes.map(\.identity))
             processHistory = processHistory.filter { live.contains($0.key) }
@@ -99,7 +101,8 @@ public actor MonitorAgent {
             lastGrowthScan = start
             let latest = (try? store.growthScans(limit: 1))?.first?.timestamp ?? .distantPast
             if start.timeIntervalSince(latest) > 86400 {
-                let scan = await Task.detached(priority: .background) { GrowthTracker.scan() }.value
+                let previous = (try? store.growthScans(limit: 1))?.first
+                let scan = await Task.detached(priority: .background) { GrowthTracker.scan(previous: previous) }.value
                 try? store.recordGrowthScan(scan)
             }
         }

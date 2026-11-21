@@ -14,7 +14,7 @@ struct SettingsView: View {
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
                 Toggle("Notifications for alerts", isOn: Binding(get: { model.config.notificationsEnabled }, set: { model.setNotifications($0) }))
                 Picker("Refresh while window is open", selection: $model.config.uiRefreshSeconds) {
-                    ForEach([1.0, 2, 3, 5, 10], id: \.self) { Text("\(Int($0)) s").tag($0) }
+                    ForEach(Array(Set([1.0, 2, 3, 5, 10, model.config.uiRefreshSeconds])).sorted(), id: \.self) { Text("\(Int($0)) s").tag($0) }
                 }
                 Text("With only the menu bar visible, MacPulse refreshes at most every 5 s and reads the process table every sixth tick.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -31,7 +31,7 @@ struct SettingsView: View {
                     model.config.autoClean.enabled = $0; model.saveConfig()
                 }))
                 Picker("Every", selection: $model.config.autoClean.intervalDays) {
-                    ForEach([1.0, 3, 7, 14, 30], id: \.self) { Text($0 == 1 ? "day" : "\(Int($0)) days").tag($0) }
+                    ForEach(Array(Set([1.0, 3, 7, 14, 30, model.config.autoClean.intervalDays])).sorted(), id: \.self) { Text($0 == 1 ? "day" : "\(Int($0)) days").tag($0) }
                 }
                 Picker("Method", selection: $model.config.autoClean.mode) {
                     Text("Delete permanently (frees space)").tag(CleanupMode.delete)

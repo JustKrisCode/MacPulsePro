@@ -158,6 +158,11 @@ struct GrowthPane: View {
                 }
                 .frame(maxWidth: 360)
                 let report = GrowthTracker.compare(scans[min(baselineIndex, scans.count - 1)], scans[0])
+                if let m = scans[0].measuredCount {
+                    Text("Latest measurement: \(String(format: "%.1f", scans[0].durationSeconds)) s, \(m) folder(s) walked" +
+                         (scans[0].incremental ? ", \(scans[0].reusedCount ?? 0) unchanged reused via the FSEvents journal" : " (full scan)"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 HStack(spacing: 16) {
                     GrowthStat(label: "Startup volume", value: report.volumeUsedDelta)
                     GrowthStat(label: "Swap files", value: report.swapDelta)

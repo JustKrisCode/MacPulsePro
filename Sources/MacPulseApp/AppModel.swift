@@ -69,6 +69,7 @@ final class AppModel {
     var growthScans: [GrowthScan] = []
     var growthScanning = false
     var energyHistory: [SeriesPointValue] = []
+    var offenders: OffenderReport?
     var autoCleanPreview: AutoCleanOutcome?
     var autoCleanBusy = false
     var autoCleanLastRun: Date?
@@ -92,6 +93,8 @@ final class AppModel {
         start()
     }
 
+    static let profiling = ProcessInfo.processInfo.environment["MACPULSE_PROFILE"] == "1"
+
     var isBundled: Bool { Bundle.main.bundleIdentifier != nil && Bundle.main.bundlePath.hasSuffix(".app") }
 
     /// While only the menu bar is visible, sample less often and skip the process table on most ticks.
@@ -114,14 +117,25 @@ final class AppModel {
         ticks += 1
         // Window open: full process table every other tick; menu bar only: every sixth tick.
         let withProcesses = mainWindowVisible ? ticks % 2 == 1 : ticks % 6 == 1
-        let snap = await sampler.snapshot(includeProcesses: withProcesses)
-        if withProcesses == false, let previous = snapshot { // keep the last process table for the menu bar
-            var merged = snap
-            merged.processes = previous.processes
-            apply(merged, freshProcesses: false)
-        } else {
-            apply(snap, freshProcesses: true)
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        // Per-process GPU time is needed live only on the GPU/Energy views; elsewhere every fifth tick suffices.
+        let gpuLive = mainWindowVisible && (selection == .gpu || selection == .energy)
+        let withGPU = gpuLive || ticks % 5 == 1
+        let snap = await sampler.snapshot(includeProcesses: withProcesses, includeGPUProcesses: withGPU)
+        let t1 = DispatchTime.now().uptimeNanoseconds
+        defer {
+            if Self.profiling {
+                let t2 = DispatchTime.now().uptimeNanoseconds
+                FileHandle.standardError.write(Data(String(format: "PROFILE sample=%.1fms apply=%.1fms procs=%d\n",
+                    Double(t1 - t0) / 1e6, Double(t2 - t1) / 1e6, withProcesses ? 1 : 0).utf8))
+            }
         }
+        var merged = snap
+        if let previous = snapshot {
+            if !withProcesses { merged.processes = previous.processes }   // keep the last table between full reads
+            if !withGPU { merged.gpu.processes = previous.gpu.processes; merged.gpu.processProvenance = previous.gpu.processProvenance; merged.gpu.notes = previous.gpu.notes }
+        }
+        apply(merged, freshProcesses: withProcesses)
     }
 
     private func apply(_ snap: SystemSnapshot, freshProcesses: Bool) {
@@ -274,6 +288,14 @@ final class AppModel {
         }
     }
 
+    func loadOffenders(days: Double = 7) {
+        guard let store else { return }
+        Task.detached(priority: .utility) {
+            let r = try? OffenderAnalyzer.report(store: store, days: days)
+            await MainActor.run { self.offenders = r }
+        }
+    }
+
     func loadGrowthScans() { growthScans = (try? store?.growthScans()) ?? [] }
 
     func runGrowthScan(includePersonal: Bool) {
@@ -281,7 +303,8 @@ final class AppModel {
         growthScanning = true
         let store = self.store
         Task.detached(priority: .utility) {
-            let scan = GrowthTracker.scan(includePersonal: includePersonal)
+            let previous = (try? store?.growthScans(limit: 1))?.first
+            let scan = GrowthTracker.scan(includePersonal: includePersonal, previous: previous)
             try? store?.recordGrowthScan(scan)
             await MainActor.run { self.growthScanning = false; self.loadGrowthScans() }
         }

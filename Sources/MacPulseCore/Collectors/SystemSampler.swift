@@ -72,15 +72,37 @@ public actor SystemSampler {
         self.runner = runner
     }
 
-    public func snapshot(includeProcesses: Bool = true, includePmset: Bool = false) -> SystemSnapshot {
-        let cpuSnap = cpu.sample()
-        let procs = includeProcesses ? processes.sample() : []
-        return SystemSnapshot(timestamp: Date(), system: system, cpu: cpuSnap,
-                              memory: MemoryCollector.snapshot(), gpu: gpu.sample(),
-                              thermal: ThermalCollector.snapshot(includePmset: includePmset, runner: runner),
-                              power: PowerCollector.snapshot(), volume: volume(),
-                              processes: procs)
+    private var cachedPower: (Date, PowerSnapshot)?
+
+    /// Battery capacity/cycles change slowly; charge and source are re-read every 10 s.
+    private func power() -> PowerSnapshot {
+        if let (t, p) = cachedPower, Date().timeIntervalSince(t) < 10 { return p }
+        let p = PowerCollector.snapshot()
+        cachedPower = (Date(), p)
+        return p
     }
+
+    public func snapshot(includeProcesses: Bool = true, includePmset: Bool = false, includeGPUProcesses: Bool = true) -> SystemSnapshot {
+        var t = DispatchTime.now().uptimeNanoseconds
+        var marks: [String] = []
+        func mark(_ n: String) {
+            guard Self.profiling else { return }
+            let now = DispatchTime.now().uptimeNanoseconds
+            marks.append(String(format: "%@=%.2f", n, Double(now - t) / 1e6)); t = now
+        }
+        let cpuSnap = cpu.sample(); mark("cpu")
+        let procs = includeProcesses ? processes.sample() : []; mark("procs")
+        let mem = MemoryCollector.snapshot(); mark("mem")
+        let g = gpu.sample(includeProcesses: includeGPUProcesses); mark("gpu")
+        let th = ThermalCollector.snapshot(includePmset: includePmset, runner: runner); mark("thermal")
+        let pw = power(); mark("power")
+        let vol = volume(); mark("volume")
+        if Self.profiling { FileHandle.standardError.write(Data(("COLLECT " + marks.joined(separator: " ") + "\n").utf8)) }
+        return SystemSnapshot(timestamp: Date(), system: system, cpu: cpuSnap, memory: mem, gpu: g,
+                              thermal: th, power: pw, volume: vol, processes: procs)
+    }
+
+    static let profiling = ProcessInfo.processInfo.environment["MACPULSE_PROFILE"] == "1"
 
     /// Takes a baseline, waits `interval`, and returns a snapshot with valid deltas (CPU %, GPU share).
     public func measured(interval: TimeInterval = 1.0, includeProcesses: Bool = true, includePmset: Bool = false) async -> SystemSnapshot {

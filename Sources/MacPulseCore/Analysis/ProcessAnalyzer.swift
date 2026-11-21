@@ -2,7 +2,7 @@ import Foundation
 
 public struct ProcessFinding: Codable, Sendable, Identifiable {
     public enum Kind: String, Codable, Sendable {
-        case largeMemory, runawayCPU, busyBackground, probableOrphan, duplicateInstances, memoryGrowth, unsignedActive, zombie
+        case largeMemory, runawayCPU, busyBackground, probableOrphan, duplicateInstances, memoryGrowth, unsignedActive, zombie, wakeupStorm, energyHog
     }
     public var kind: Kind
     public var pids: [Int32]
@@ -122,6 +122,31 @@ public enum ProcessAnalyzer {
                                           evidence: ["\(Int(result.fraction * 100))% of samples above threshold over \(Format.duration(result.covered))",
                                                      background ? "Not the frontmost application" : "Frontmost application (may be intentional work)"],
                                           severity: background ? .warning : .info, confidence: .medium, provenance: .measured))
+            }
+        }
+
+        // Sustained wakeup storms and energy hogs (history-based, never a single sample).
+        for r in user {
+            guard let series = ctx.history[r.identity] else { continue }
+            let window = ctx.thresholds.sustainedBehaviorMinutes * 60
+            let wk = Trends.sustained(series.compactMap { p in p.wakeups.map { (p.timestamp, $0) } },
+                                      threshold: ctx.thresholds.wakeupsPerSecond, window: window, minFraction: 0.9)
+            if wk.sustained {
+                let avg = series.compactMap(\.wakeups).reduce(0, +) / Double(max(1, series.compactMap(\.wakeups).count))
+                out.append(ProcessFinding(kind: .wakeupStorm, pids: [r.pid], identities: [r.identity],
+                                          title: "\(r.name) has woken the CPU ~\(Int(avg))×/s for \(Format.duration(wk.covered))",
+                                          evidence: ["≥ \(Int(ctx.thresholds.wakeupsPerSecond)) wakeups/s in \(Int(wk.fraction * 100))% of samples",
+                                                     "Frequent wakeups keep cores out of low-power states and cost battery even at low CPU %"],
+                                          severity: .info, confidence: .medium, provenance: .measured))
+            }
+            let en = Trends.sustained(series.compactMap { p in p.power.map { (p.timestamp, $0) } },
+                                      threshold: ctx.thresholds.energyHogWatts, window: window, minFraction: 0.9)
+            if en.sustained {
+                let avg = series.compactMap(\.power).reduce(0, +) / Double(max(1, series.compactMap(\.power).count))
+                out.append(ProcessFinding(kind: .energyHog, pids: [r.pid], identities: [r.identity],
+                                          title: "\(r.name) has drawn ~\(String(format: "%.1f", avg)) W for \(Format.duration(en.covered))",
+                                          evidence: ["≥ \(String(format: "%.1f", ctx.thresholds.energyHogWatts)) W in \(Int(en.fraction * 100))% of samples (kernel energy accounting)"],
+                                          severity: .info, confidence: .medium, provenance: .measuredUndocumented))
             }
         }
 

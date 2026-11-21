@@ -17,6 +17,14 @@ scripts/build-app.sh            # release .app bundle in ./build
 
 Use `MACPULSE_HOME=/tmp/mp` to keep history and configuration out of `~/Library/Application Support` while developing.
 
+### Measuring overhead
+
+```sh
+scripts/bench-app.sh overview        # release app CPU/footprint over 60 s on a section
+MACPULSE_PROFILE=1 MACPULSE_START_SECTION=gpu "$(swift build -c release --show-bin-path)/MacPulseApp"
+```
+Compare old and new builds side by side when the machine is busy; single runs are noisy.
+
 ### Visual check of the UI
 
 The app has a developer snapshot mode that renders every section to PNG without Screen Recording permission:

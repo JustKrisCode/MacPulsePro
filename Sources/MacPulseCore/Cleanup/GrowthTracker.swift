@@ -17,6 +17,14 @@ public struct GrowthScan: Codable, Sendable {
     public var localSnapshotCount: Int?
     public var durationSeconds: Double
     public var unreadable: [String]
+    /// FSEvents journal position taken at the start of the scan (enables incremental rescans).
+    public var eventID: UInt64? = nil
+    public var volumeUUID: String? = nil
+    public var includedPersonal: Bool? = nil
+    /// How many folders were walked vs. reused unchanged from the previous scan.
+    public var measuredCount: Int? = nil
+    public var reusedCount: Int? = nil
+    public var incremental: Bool { (reusedCount ?? 0) > 0 }
 }
 
 public struct GrowthEntry: Codable, Sendable, Identifiable {
@@ -70,31 +78,45 @@ public enum GrowthTracker {
         }
     }
 
-    public static func scan(includePersonal: Bool = false, minBytes: Int64 = 50_000_000, cancel: CancellationFlag? = nil,
-                            runner: CommandRunner = SystemCommandRunner()) -> GrowthScan {
+    /// Measures folder sizes. With `previous`, only folders the FSEvents journal reports as changed are
+    /// walked again; everything else reuses the previous size. Falls back to a full scan whenever the
+    /// journal cannot answer reliably (different volume journal, wrapped IDs, dropped events, timeout).
+    public static func scan(includePersonal: Bool = false, previous: GrowthScan? = nil, cancel: CancellationFlag? = nil,
+                            runner: CommandRunner = SystemCommandRunner(), home: String = NSHomeDirectory(),
+                            targetsOverride: [String]? = nil) -> GrowthScan {
         let start = Date()
-        let paths = targets(includePersonal: includePersonal)
+        let eventID = FSEventsHistory.currentEventID()
+        let uuid = FSEventsHistory.volumeUUID(for: home)
+        let paths = targetsOverride ?? targets(home: home, includePersonal: includePersonal)
+
+        var reuse: [String: Int64] = [:]
+        if let previous, let since = previous.eventID, previous.volumeUUID == uuid, uuid != nil,
+           (previous.includedPersonal ?? false) == includePersonal,
+           let changes = FSEventsHistory.changes(since: since, root: home), !changes.fullRescan {
+            let old = Dictionary(previous.folders.map { ($0.path, $0.bytes) }, uniquingKeysWith: { a, _ in a })
+            for p in paths where !changes.isDirty(p) {
+                if let b = old[p] { reuse[p] = b }
+            }
+        }
+        let toMeasure = paths.filter { reuse[$0] == nil }
         let results = LockedArray<FolderSize>()
         let unreadable = LockedArray<String>()
-        DispatchQueue.concurrentPerform(iterations: paths.count) { i in
+        DispatchQueue.concurrentPerform(iterations: toMeasure.count) { i in
             if cancel?.isCancelled == true { return }
-            let u = DiskUsageScanner.measure(paths[i], cancel: cancel)
-            if u.permissionDenied > 0 && u.allocated == 0 { unreadable.append(paths[i]); return }
-            results.append(FolderSize(path: paths[i], bytes: u.allocated))
+            let u = DiskUsageScanner.measure(toMeasure[i], cancel: cancel)
+            if u.permissionDenied > 0 && u.allocated == 0 { unreadable.append(toMeasure[i]); return }
+            results.append(FolderSize(path: toMeasure[i], bytes: u.allocated))
         }
-        // Keep parents (depth 1) always so totals remain comparable; children only when sizable.
-        let lib = NSHomeDirectory() + "/Library/"
-        let kept = results.values.filter { f in
-            let rel = f.path.hasPrefix(lib) ? String(f.path.dropFirst(lib.count)) : ""
-            return !rel.contains("/") || f.bytes >= minBytes
-        }
+        let folders = results.values + reuse.map { FolderSize(path: $0.key, bytes: $0.value) }
         let mem = MemoryCollector.snapshot()
         let vol = StorageCollector.quickVolume("/")
-        return GrowthScan(id: UUID().uuidString.prefix(8).lowercased(), timestamp: Date(),
-                          folders: kept.sorted { $0.bytes > $1.bytes },
+        return GrowthScan(id: String(UUID().uuidString.prefix(8).lowercased()), timestamp: Date(),
+                          folders: folders.sorted { $0.bytes > $1.bytes },
                           swapFileBytes: mem.map { Int64($0.swapTotal) }, volumeUsed: vol?.used,
                           localSnapshotCount: StorageCollector.localSnapshots(runner: runner)?.count,
-                          durationSeconds: Date().timeIntervalSince(start), unreadable: unreadable.values.sorted())
+                          durationSeconds: Date().timeIntervalSince(start), unreadable: unreadable.values.sorted(),
+                          eventID: eventID, volumeUUID: uuid, includedPersonal: includePersonal,
+                          measuredCount: toMeasure.count, reusedCount: reuse.count)
     }
 
     public static func compare(_ old: GrowthScan, _ new: GrowthScan) -> GrowthReport {

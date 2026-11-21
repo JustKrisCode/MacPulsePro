@@ -28,7 +28,7 @@ struct MonitoringView: View {
                     GridRow {
                         Text("Sampling interval")
                         Picker("", selection: $model.config.sampleIntervalSeconds) {
-                            ForEach([15.0, 30, 60, 120, 300], id: \.self) { Text("\(Int($0)) s").tag($0) }
+                            ForEach(Array(Set([15.0, 30, 60, 120, 300, model.config.sampleIntervalSeconds])).sorted(), id: \.self) { Text("\(Int($0)) s").tag($0) }
                         }.labelsHidden().frame(width: 120)
                     }
                     GridRow { Text("Halve sampling on battery"); Toggle("", isOn: $model.config.reduceSamplingOnBattery).labelsHidden() }
@@ -68,6 +68,26 @@ struct MonitoringView: View {
                     }
                 }
             }
+            Card(title: "Top offenders this week", systemImage: "trophy") {
+                if let r = model.offenders, r.processSamples > 0 {
+                    if r.hotMinutes > 0 || r.pressureMinutes > 0 {
+                        Text("Warm for \(Int(r.hotMinutes)) min · memory pressure elevated for \(Int(r.pressureMinutes)) min")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)], spacing: 14) {
+                        OffenderList(title: "Heated the Mac", symbol: "thermometer.sun", items: r.heat)
+                        OffenderList(title: "Filled memory under pressure", symbol: "memorychip", items: r.memoryPressure)
+                        OffenderList(title: "Most CPU", symbol: "cpu", items: r.cpu)
+                        OffenderList(title: "Most energy", symbol: "bolt", items: r.energy)
+                        OffenderList(title: "Most CPU wakeups", symbol: "alarm", items: r.wakeups)
+                        OffenderList(title: "Largest memory", symbol: "square.stack.3d.up", items: r.memory)
+                    }
+                    ForEach(r.notes, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                } else {
+                    Text(model.offenders?.notes.first ?? "Loading…").foregroundStyle(.secondary)
+                }
+            }
+            .onAppear { model.loadOffenders() }
             Card(title: "Alerts (last 7 days)", systemImage: "bell") {
                 if model.events.isEmpty {
                     Text("No alerts recorded.").foregroundStyle(.secondary)
@@ -123,6 +143,26 @@ struct CleanupHistoryView: View {
                     TableColumn("Run") { Text($0.runID).font(.caption.monospaced()).foregroundStyle(.secondary) }.width(80)
                 }
             }
+        }
+    }
+}
+
+struct OffenderList: View {
+    let title: String
+    let symbol: String
+    let items: [Offender]
+    var body: some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(title, systemImage: symbol).font(.subheadline.weight(.semibold))
+                ForEach(Array(items.enumerated()), id: \.element.id) { i, x in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(i + 1). \(x.name)").font(.callout)
+                        Text(x.detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

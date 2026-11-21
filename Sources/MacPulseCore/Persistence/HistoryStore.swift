@@ -24,8 +24,10 @@ public struct ProcessHistoryPoint: Codable, Sendable {
     public var timestamp: Date
     public var cpu: Double?
     public var footprint: UInt64?
-    public init(timestamp: Date, cpu: Double?, footprint: UInt64?) {
-        self.timestamp = timestamp; self.cpu = cpu; self.footprint = footprint
+    public var power: Double?
+    public var wakeups: Double?
+    public init(timestamp: Date, cpu: Double?, footprint: UInt64?, power: Double? = nil, wakeups: Double? = nil) {
+        self.timestamp = timestamp; self.cpu = cpu; self.footprint = footprint; self.power = power; self.wakeups = wakeups
     }
 }
 
@@ -72,6 +74,11 @@ public final class HistoryStore: Sendable {
             classification TEXT, method TEXT, estimated INTEGER, removed INTEGER, status TEXT, detail TEXT, trash_path TEXT);
         """)
         try db.run("INSERT OR IGNORE INTO meta(key, value) VALUES('schema', ?)", [.text(String(Self.schemaVersion))])
+        // v2: energy and wakeups per process sample (additive migration; old rows keep NULL).
+        let cols = try db.query("PRAGMA table_info(process_samples)").compactMap { $0[safe: 1]?.text }
+        if !cols.contains("power") { try db.execute("ALTER TABLE process_samples ADD COLUMN power REAL") }
+        if !cols.contains("wakeups") { try db.execute("ALTER TABLE process_samples ADD COLUMN wakeups REAL") }
+        try db.run("UPDATE meta SET value='2' WHERE key='schema'")
     }
 
     // MARK: samples
@@ -102,13 +109,15 @@ public final class HistoryStore: Sendable {
     public func recordProcesses(_ records: [ProcessRecord], at date: Date, topN: Int = 12) throws {
         let byCPU = records.sorted(by: ProcessSortKey.cpu.comparator).prefix(topN)
         let byMem = records.sorted(by: ProcessSortKey.memory.comparator).prefix(topN)
+        let byEnergy = records.sorted(by: ProcessSortKey.energy.comparator).prefix(topN / 2)
+        let byWakeups = records.sorted(by: ProcessSortKey.wakeups.comparator).prefix(topN / 2)
         var seen = Set<ProcessIdentity>()
-        let selected = (byCPU + byMem).filter { seen.insert($0.identity).inserted }
+        let selected = (byCPU + byMem + byEnergy + byWakeups).filter { seen.insert($0.identity).inserted }
         try db.transaction {
             for p in selected {
-                try db.run("INSERT INTO process_samples(ts,pid,start,name,cpu,footprint) VALUES(?,?,?,?,?,?)",
+                try db.run("INSERT INTO process_samples(ts,pid,start,name,cpu,footprint,power,wakeups) VALUES(?,?,?,?,?,?,?,?)",
                            [.double(date.timeIntervalSince1970), .int(Int64(p.pid)), .int(p.startMicros),
-                            .text(p.name), p.cpuPercent.sql, p.footprint.sql])
+                            .text(p.name), p.cpuPercent.sql, p.footprint.sql, p.powerWatts.sql, p.wakeupsPerSecond.sql])
             }
         }
     }
@@ -124,12 +133,13 @@ public final class HistoryStore: Sendable {
     /// All process series since a date, grouped by identity (used for leak and runaway detection).
     public func processSeries(since: Date) throws -> [ProcessIdentity: (name: String, points: [ProcessHistoryPoint])] {
         var out: [ProcessIdentity: (name: String, points: [ProcessHistoryPoint])] = [:]
-        for r in try db.query("SELECT pid,start,name,ts,cpu,footprint FROM process_samples WHERE ts>=? ORDER BY ts",
+        for r in try db.query("SELECT pid,start,name,ts,cpu,footprint,power,wakeups FROM process_samples WHERE ts>=? ORDER BY ts",
                               [.double(since.timeIntervalSince1970)]) {
             let id = ProcessIdentity(pid: Int32(r[0].int ?? 0), startMicros: r[1].int ?? 0)
             var entry = out[id] ?? (r[2].text ?? "?", [])
             entry.points.append(ProcessHistoryPoint(timestamp: Date(timeIntervalSince1970: r[3].double ?? 0),
-                                                    cpu: r[4].double, footprint: r[5].int.map { UInt64(max(0, $0)) }))
+                                                    cpu: r[4].double, footprint: r[5].int.map { UInt64(max(0, $0)) },
+                                                    power: r[6].double, wakeups: r[7].double))
             out[id] = entry
         }
         return out

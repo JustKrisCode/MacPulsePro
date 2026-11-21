@@ -5,7 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Performance
+- App CPU use with the window open fell by ~70% in a side-by-side A/B run (2.7–3.1 s → 0.85–0.90 s CPU per minute):
+  GPU statistics read only the needed IORegistry keys (7 ms → <1 ms per refresh) and per-process GPU time is
+  sampled live only on GPU/Energy views; battery details cached for 10 s; static process facts cached per
+  identity; running-app list refreshed every 5 s; Canvas sparklines; cached app icons; a covered or minimized
+  window drops to the low-frequency mode.
+- `scripts/bench-app.sh` and `MACPULSE_PROFILE=1` for repeatable measurements.
+
 ### Added
+- Incremental disk-growth scans via the FSEvents journal (2.7 s instead of 21 s on the test Mac), verified equal
+  to full rescans; `--full` forces a full walk.
+- Top offenders report (`macpulse offenders`, Monitoring card) correlating apps with heat, memory pressure,
+  energy and wakeups; process history now stores power and wakeups (schema v2, additive migration).
+- Sustained wakeup-storm and on-battery energy-hog alerts; swap-growth alerts name the largest app.
 - **Automatic cleanup (opt-in)**: scheduled removal of SAFE, idle (≥24 h) developer caches/logs (browser and app
   caches optional), driven by the background monitor or the open app; preview, run-now, Settings UI,
   `macpulse autoclean`, audit entries with `auto-` run ids, events and optional notifications.
@@ -17,7 +30,7 @@ All notable changes to this project are documented here. The format follows
   unattributed system change; `macpulse disk growth`, Storage › Growth tab; daily scan in the background monitor.
 - **Workload gate**: `macpulse ready` and `macpulse run --when-ready -- COMMAND` (exec, no shell; job exit code preserved).
 - MIT license, contributing guide, security policy, code of conduct, issue/PR templates and CI workflow.
-- 20 new tests (110 total).
+- 27 new tests (117 total).
 - Slowdown detective judges swapping by MB/min (16 KB pages), so light background swapping is no longer "high impact"; the all-clear icon only shows without high-impact causes.
 
 ### Fixed

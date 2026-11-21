@@ -75,7 +75,7 @@ struct ProcessesView: View {
 
     func appIcon(_ p: ProcessRecord) -> NSImage? {
         guard p.category == .application else { return nil }
-        return NSRunningApplication(processIdentifier: p.pid)?.icon
+        return IconCache.shared.icon(for: p)
     }
 }
 
@@ -202,5 +202,21 @@ struct LabeledText: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
             Text(value).font(.callout).textSelection(.enabled).lineLimit(6)
         }
+    }
+}
+
+/// Application icons looked up once per process identity instead of on every table render.
+@MainActor
+final class IconCache {
+    static let shared = IconCache()
+    private var icons: [ProcessIdentity: NSImage] = [:]
+
+    func icon(for p: ProcessRecord) -> NSImage? {
+        if let i = icons[p.identity] { return i }
+        guard let i = NSRunningApplication(processIdentifier: p.pid)?.icon else { return nil }
+        if icons.count > 200 { icons.removeAll() }
+        i.size = NSSize(width: 16, height: 16)
+        icons[p.identity] = i
+        return i
     }
 }

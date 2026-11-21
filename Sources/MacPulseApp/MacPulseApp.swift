@@ -111,6 +111,10 @@ struct RootView: View {
         .sheet(item: $model.diagnosis) { d in DiagnosisSheet(diagnosis: d) { model.diagnosis = nil } }
         .onAppear { model.mainWindowVisible = true; SnapshotHarness.runIfRequested(model: model) }
         .onDisappear { model.mainWindowVisible = false }
+        // Covered by other windows, minimized or app hidden → refresh like the menu-bar-only mode.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            model.mainWindowVisible = NSApp.windows.contains { $0.isVisible && $0.frame.width > 600 && $0.occlusionState.contains(.visible) }
+        }
     }
 
     @ViewBuilder

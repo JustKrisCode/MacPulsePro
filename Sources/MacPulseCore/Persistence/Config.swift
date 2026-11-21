@@ -10,6 +10,10 @@ public struct Thresholds: Codable, Sendable, Equatable {
     public var runawayProcessMinutes: Double = 5
     public var largeProcessFootprintBytes: UInt64 = 4_000_000_000
     public var memoryGrowthBytesPerHour: Double = 200_000_000
+    /// Sustained-behaviour alerts (wakeup storms, energy hogs) need this long a streak.
+    public var sustainedBehaviorMinutes: Double = 30
+    public var wakeupsPerSecond: Double = 1000
+    public var energyHogWatts: Double = 2
 
     public init() {}
 
@@ -25,6 +29,9 @@ public struct Thresholds: Codable, Sendable, Equatable {
         runawayProcessMinutes = try c.decodeIfPresent(Double.self, forKey: .runawayProcessMinutes) ?? d.runawayProcessMinutes
         largeProcessFootprintBytes = try c.decodeIfPresent(UInt64.self, forKey: .largeProcessFootprintBytes) ?? d.largeProcessFootprintBytes
         memoryGrowthBytesPerHour = try c.decodeIfPresent(Double.self, forKey: .memoryGrowthBytesPerHour) ?? d.memoryGrowthBytesPerHour
+        sustainedBehaviorMinutes = max(5, try c.decodeIfPresent(Double.self, forKey: .sustainedBehaviorMinutes) ?? d.sustainedBehaviorMinutes)
+        wakeupsPerSecond = try c.decodeIfPresent(Double.self, forKey: .wakeupsPerSecond) ?? d.wakeupsPerSecond
+        energyHogWatts = try c.decodeIfPresent(Double.self, forKey: .energyHogWatts) ?? d.energyHogWatts
     }
 }
 

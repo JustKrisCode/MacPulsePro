@@ -23,8 +23,10 @@ public enum MonitorRules {
                                        detail: "Swap \(Format.memory(m.swapUsed)), compressed \(Format.memory(m.compressed))."))
         }
         if let g = h.swapGrowthPerHour, g >= t.swapGrowthBytesPerHour, (h.swapGrowthR2 ?? 0) >= 0.5 {
+            let top = s.processes.filter { $0.category != .system }.sorted(by: ProcessSortKey.memory.comparator).first
             alerts.append(MonitorAlert(kind: "swap-growth", severity: .warning, title: "Swap is growing quickly",
-                                       detail: "+\(Format.memory(Int64(g)))/h over the last hour."))
+                                       detail: "+\(Format.memory(Int64(g)))/h over the last hour (now \(Format.memory(s.memory?.swapUsed)))."
+                                         + (top.map { " Largest app: \($0.name) (\(Format.memory($0.footprint)))." } ?? "")))
         }
         if h.sustainedHighCPU {
             alerts.append(MonitorAlert(kind: "sustained-cpu", severity: .warning, title: "Sustained high CPU",
@@ -35,7 +37,9 @@ public enum MonitorRules {
                                        title: "Thermal pressure \(s.thermal.state.rawValue)",
                                        detail: "macOS is reducing performance to manage temperature."))
         }
-        for f in findings where f.kind == .runawayCPU || f.kind == .memoryGrowth {
+        let onBattery = s.power.source == "Battery Power"
+        for f in findings where f.kind == .runawayCPU || f.kind == .memoryGrowth || f.kind == .wakeupStorm
+            || (f.kind == .energyHog && onBattery) {
             alerts.append(MonitorAlert(kind: "process-\(f.kind.rawValue)-\(f.identities.first?.description ?? "")",
                                        severity: .warning, title: f.title, detail: f.evidence.first ?? ""))
         }

@@ -146,16 +146,27 @@ struct CPUView: View {
     }
 }
 
+/// Cheap sparkline drawn with a single Path in a Canvas (no Swift Charts layout per cell).
 struct Sparkline: View {
     let values: [Double]
     var color: Color = .accentColor
+    var maxValue: Double = 100
+
     var body: some View {
-        Chart(Array(values.enumerated()), id: \.offset) { i, v in
-            AreaMark(x: .value("i", i), y: .value("v", v)).foregroundStyle(color.opacity(0.25))
-            LineMark(x: .value("i", i), y: .value("v", v)).foregroundStyle(color).lineStyle(StrokeStyle(lineWidth: 1))
+        Canvas { ctx, size in
+            guard values.count > 1 else { return }
+            let step = size.width / CGFloat(values.count - 1)
+            func y(_ v: Double) -> CGFloat { size.height * (1 - CGFloat(min(max(v, 0), maxValue) / maxValue)) }
+            var line = Path()
+            line.move(to: CGPoint(x: 0, y: y(values[0])))
+            for (i, v) in values.enumerated().dropFirst() { line.addLine(to: CGPoint(x: CGFloat(i) * step, y: y(v))) }
+            var area = line
+            area.addLine(to: CGPoint(x: size.width, y: size.height))
+            area.addLine(to: CGPoint(x: 0, y: size.height))
+            area.closeSubpath()
+            ctx.fill(area, with: .color(color.opacity(0.25)))
+            ctx.stroke(line, with: .color(color), lineWidth: 1)
         }
-        .chartYScale(domain: 0...100)
-        .chartXAxis(.hidden).chartYAxis(.hidden)
         .accessibilityHidden(true)
     }
 }

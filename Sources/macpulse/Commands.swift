@@ -26,6 +26,7 @@ struct Commands {
         case "disk" where sub == "growth": return try diskGrowth()
         case "disk": return try await DiskCommands(args: args, config: config).run(sub)
         case "why": return try await why()
+        case "offenders", "top-offenders": return try offenders()
         case "autoclean", "auto-clean": return try await autoclean(sub)
         case "energy", "power-usage": return try await energy()
         case "ready": return try await ready()

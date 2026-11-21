@@ -54,6 +54,7 @@ MONITORING
 INSIGHTS
   why                            Why is my Mac slow? Bottleneck, baseline comparison and named causes
   energy [--sample SEC]          Power per app (W) and CPU wakeups — what drains the battery
+  offenders [--days 7]           Which apps heated the Mac, filled memory, drew energy, woke the CPU (from history)
   ready [--cpu 60] [--allow-fair]          Exit 0 if the Mac has headroom for heavy work, 10 if not
   run --when-ready [--max-wait 30m] [--cpu 60] [--allow-fair] [--run-anyway] -- COMMAND …
                                  Start a heavy job only once the Mac is cool and has free memory
@@ -65,7 +66,7 @@ STORAGE
   disk large [PATH] [--min-size 1GB]           Largest files (clone-aware sizes)
   disk duplicates PATH [--min-size 1MB]        Identical files by SHA-256
   disk history                   Cleanup audit log (estimated vs measured bytes)
-  disk growth [--scan] [--since 7d] [--personal]   What grew on disk, incl. swap files
+  disk growth [--scan] [--full] [--since 7d] [--personal]   What grew on disk, incl. swap files (incremental via FSEvents)
   autoclean [status|enable|disable|preview|run] [--every 7] [--mode delete|trash] [--categories …]
                                  Opt-in scheduled cleanup of SAFE caches/logs (idle ≥24 h, apps not running)
 

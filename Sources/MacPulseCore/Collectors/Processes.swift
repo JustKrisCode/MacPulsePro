@@ -172,28 +172,56 @@ public enum ProcessCollector {
     }
 
     /// Raw listing without CPU percentages (those need two samples — see ProcessSampler).
+    /// Facts about a process that never change during its lifetime (keyed by pid + start time).
+    struct StaticInfo: Sendable {
+        var path: String?
+        var name: String
+        var user: String
+        var category: ProcessCategory
+        var bundleID: String?
+    }
+
+    /// Raw listing without CPU percentages (those need two samples — see ProcessSampler).
     public static func list() -> [ProcessRecord] {
+        var cache: [ProcessIdentity: StaticInfo] = [:]
+        return list(cache: &cache, apps: runningApps())
+    }
+
+    /// Listing that reuses `cache` for path/name/user/category, so steady-state sampling only pays for the
+    /// counters that actually change (task info and rusage). Entries for exited processes are dropped.
+    static func list(cache: inout [ProcessIdentity: StaticInfo], apps: [Int32: AppInfo]) -> [ProcessRecord] {
         let myUID = getuid()
-        let apps = runningApps()
         var users: [UInt32: String] = [:]
-        return kernelProcesses().map { kp in
-            let path = executablePath(kp.pid)
+        let now = Date().timeIntervalSince1970 * 1e6
+        var next: [ProcessIdentity: StaticInfo] = [:]
+        let records = kernelProcesses().map { kp -> ProcessRecord in
+            let id = ProcessIdentity(pid: kp.pid, startMicros: kp.startMicros)
             let app = apps[kp.pid]
+            let info: StaticInfo
+            if let cached = cache[id], cached.bundleID != nil || app == nil {
+                info = cached
+            } else {
+                let path = executablePath(kp.pid)
+                let name = app?.name ?? path.map { ($0 as NSString).lastPathComponent } ?? kp.comm
+                let user = users[kp.uid] ?? {
+                    let n = getpwuid(kp.uid).flatMap { String(validatingCString: $0.pointee.pw_name) } ?? String(kp.uid)
+                    users[kp.uid] = n
+                    return n
+                }()
+                info = StaticInfo(path: path, name: name, user: user,
+                                  category: categorize(pid: kp.pid, uid: kp.uid, name: name, path: path, app: app, myUID: myUID),
+                                  bundleID: app?.bundleID)
+            }
+            // Very young processes may not have registered as apps yet (or exec'd a new image): don't cache them.
+            if now - Double(kp.startMicros) > 10_000_000 { next[id] = info }
             let task = taskInfo(kp.pid)
             let ru = rusage(kp.pid)
-            let name = app?.name ?? path.map { ($0 as NSString).lastPathComponent } ?? kp.comm
-            let user = users[kp.uid] ?? {
-                let n = getpwuid(kp.uid).flatMap { String(validatingCString: $0.pointee.pw_name) } ?? String(kp.uid)
-                users[kp.uid] = n
-                return n
-            }()
             let cpuNs = task.map { MachTime.toNanoseconds($0.pti_total_user) + MachTime.toNanoseconds($0.pti_total_system) }
             return ProcessRecord(
-                pid: kp.pid, ppid: kp.ppid, pgid: kp.pgid, uid: kp.uid, user: user, name: name, path: path,
+                pid: kp.pid, ppid: kp.ppid, pgid: kp.pgid, uid: kp.uid, user: info.user, name: info.name, path: info.path,
                 startTime: Date(timeIntervalSince1970: Double(kp.startMicros) / 1e6), startMicros: kp.startMicros,
                 status: statusString(kp.stat), hasControllingTerminal: kp.hasTTY,
-                category: categorize(pid: kp.pid, uid: kp.uid, name: name, path: path, app: app, myUID: myUID),
-                bundleIdentifier: app?.bundleID, isForegroundApp: app?.active ?? false,
+                category: info.category, bundleIdentifier: info.bundleID, isForegroundApp: app?.active ?? false,
                 accessible: task != nil, cpuPercent: nil,
                 cpuTimeSeconds: cpuNs.map { Double($0) / 1e9 },
                 footprint: ru.map { $0.ri_phys_footprint }, residentSize: task.map { $0.pti_resident_size },
@@ -202,6 +230,8 @@ public enum ProcessCollector {
                 energyNanojoules: ru.map { $0.ri_energy_nj },
                 wakeupsTotal: ru.map { $0.ri_pkg_idle_wkups &+ $0.ri_interrupt_wkups })
         }
+        cache = next
+        return records
     }
 }
 
@@ -210,12 +240,17 @@ public struct ProcessSampler: Sendable {
     struct Counters: Sendable { var cpu: Double?; var energy: UInt64?; var wakeups: UInt64? }
     private var previous: [ProcessIdentity: Counters] = [:]
     private var previousTime: Date?
+    private var staticCache: [ProcessIdentity: ProcessCollector.StaticInfo] = [:]
+    private var apps: [Int32: AppInfo] = [:]
+    private var appsReadAt = Date.distantPast
 
     public init() {}
 
     public mutating func sample() -> [ProcessRecord] {
         let now = Date()
-        var records = ProcessCollector.list()
+        // The running-application list changes rarely; refresh it every 5 s (foreground state may lag that long).
+        if now.timeIntervalSince(appsReadAt) > 5 { apps = ProcessCollector.runningApps(); appsReadAt = now }
+        var records = ProcessCollector.list(cache: &staticCache, apps: apps)
         let interval = previousTime.map { now.timeIntervalSince($0) } ?? 0
         var next: [ProcessIdentity: Counters] = [:]
         next.reserveCapacity(records.count)

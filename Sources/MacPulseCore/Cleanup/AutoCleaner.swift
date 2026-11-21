@@ -105,7 +105,7 @@ public enum AutoCleaner {
         }
         if !dryRun, let store {
             try? store.setMeta(lastRunKey, String(now.timeIntervalSince1970))
-            try? store.recordEvent(kind: "auto-clean", severity: .info, title: "Automatic cleanup", detail: outcome.summary, at: now)
+            _ = try? store.recordEvent(kind: "auto-clean", severity: .info, title: "Automatic cleanup", detail: outcome.summary, at: now)
         }
         return outcome
     }

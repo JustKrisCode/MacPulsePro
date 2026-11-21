@@ -9,6 +9,10 @@ enum SnapshotHarness {
     static var directory: String? { ProcessInfo.processInfo.environment["MACPULSE_SNAPSHOT_DIR"] }
 
     static func runIfRequested(model: AppModel) {
+        // Benchmark aid: open the app directly on a given section.
+        if let start = ProcessInfo.processInfo.environment["MACPULSE_START_SECTION"], let s = SidebarSection(rawValue: start) {
+            model.selection = s
+        }
         guard let dir = directory else { return }
         let appearance = ProcessInfo.processInfo.environment["MACPULSE_SNAPSHOT_APPEARANCE"]
         if appearance == "light" { NSApp.appearance = NSAppearance(named: .aqua) }

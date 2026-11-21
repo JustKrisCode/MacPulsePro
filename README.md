@@ -23,7 +23,12 @@ unavailable), and never deletes or terminates anything without validated, explic
 - **Energy per app**: power (W) per process and per app from the kernel's energy accounting, plus CPU wakeups per
   second. It answers "what is draining my battery?" without `sudo powermetrics`.
 - **Disk growth tracking**: measured folder sizes over time, including swap files, so "where did my free space
-  go?" has a measured answer. The background monitor records one scan a day.
+  go?" has a measured answer. Rescans are incremental through the FSEvents journal: only changed folders are
+  walked again (seconds instead of minutes), with a full rescan whenever the journal cannot answer reliably.
+- **Top offenders this week** (`macpulse offenders`, Monitoring): which apps heated the Mac, filled memory under
+  pressure, drew the most energy or woke the CPU most often, from the monitor's history.
+- **Smarter alerts**: sustained wakeup storms (≥1000/s for 30 min) and energy hogs on battery (≥2 W for 30 min),
+  and swap-growth alerts that name the largest app.
 - **Automatic cleanup (opt-in)**: on a schedule, removes only SAFE, rebuildable caches and old logs that have been
   idle for at least 24 h and whose apps are not running. Every item still passes the full validation chain and is
   written to the audit log. Turn it on in Settings or with `macpulse autoclean enable`.
@@ -39,7 +44,7 @@ unavailable), and never deletes or terminates anything without validated, explic
 ## Build, test, install
 
 ```sh
-swift test                      # 110 tests: safety, parsers, analysis, persistence, live collectors, overhead
+swift test                      # 117 tests: safety, parsers, analysis, persistence, live collectors, overhead
 scripts/build-app.sh            # → build/MacPulse Pro.app  (bundles the CLI at Contents/MacOS/macpulse)
 UNIVERSAL=1 scripts/build-app.sh  # arm64 + x86_64 (Intel)
 scripts/install.sh              # → ~/Applications/MacPulse Pro.app and ~/.local/bin/macpulse (no sudo)
@@ -73,7 +78,8 @@ macpulse why                        why is my Mac slow? bottleneck, baseline com
 macpulse energy [--sample 3]        power per app (W) and CPU wakeups
 macpulse ready [--cpu 60] [--allow-fair]       exit 0 if there is headroom for heavy work, 10 if not
 macpulse run --when-ready [--max-wait 30m] [--run-anyway] -- COMMAND ARGS…   start a job once the Mac is ready
-macpulse disk growth [--scan] [--since 7d] [--personal]  what grew on disk, including swap files
+macpulse disk growth [--scan] [--full] [--since 7d] [--personal]  what grew on disk (incremental via FSEvents)
+macpulse offenders [--days 7]       which apps heated the Mac, filled memory, drew energy, woke the CPU
 macpulse autoclean [status|enable|disable|preview|run] [--every 7] [--mode delete|trash] [--categories …]
 macpulse disk analyze [--personal]  categorized candidates with IDs (read-only)
 macpulse disk clean --select ID,ID  dry run (default)
@@ -124,10 +130,12 @@ Example: `macpulse config set thresholds.lowDiskFreePercent 12`
 | Light sample (monitor tick, no process table) | ~15–20 ms per sample | — |
 | Full sample incl. ~800 processes | ~25–80 ms per sample | — |
 | CLI live monitor, 2 s interval, full process table | ~2% of one core | ~25 MB |
-| App window open on Overview, 2 s refresh | ~2.7% of one core | ~125 MB |
+| App window open on Overview, 2 s refresh | ~1.5% of one core (A/B: 70% less than 1.0) | 60–120 MB footprint (graphics buffers fluctuate) |
+| App window covered/minimized, or menu bar only | refreshes ≤ every 5 s, process table every 6th tick | — |
 | Background monitor, 60 s interval | <0.1% of one core | one SQLite row per minute |
 
-Run `macpulse doctor` to see the per-collector timings on your own machine.
+Run `macpulse doctor` to see the per-collector timings on your own machine, `scripts/bench-app.sh [section]` to measure
+the app, and `MACPULSE_PROFILE=1` to log per-phase timings of every refresh.
 
 ## Known limitations
 

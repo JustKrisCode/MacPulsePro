@@ -39,7 +39,7 @@ Verified on macOS 27.2 (build 26B123), Apple M4 (4P+6E), as a non-admin user, wi
 | Snapshot sizes | ✗ | unavailable | needs root |
 | Allocated vs. logical size | ✓ | measured | `fts` + `st_blocks` (hard links counted once) |
 | Clone-aware private size (per file) | ✓ APFS | measured | `getattrlist(ATTR_CMNEXT_PRIVATESIZE)` |
-| Folder growth over time | ✓ (on demand / daily in monitor) | measured | repeated `fts` allocated-size scans stored in SQLite |
+| Folder growth over time | ✓ (on demand / daily in monitor) | measured | `fts` allocated-size scans; unchanged folders reused via the FSEvents journal (`FSEventStreamCreate` sinceWhen) |
 | Swap file size on disk | ✓ | measured | `vm.swapusage` total |
 | Slowdown diagnosis, resource pressure | ✓ | inferred | rules over the measured signals above (documented in code) |
 | MetricKit | ✗ (not applicable) | — | reports only the app's own diagnostics, daily |

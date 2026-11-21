@@ -9,7 +9,7 @@ struct Args {
 
     static let valueKeys: Set<String> = ["interval", "limit", "sort", "format", "output", "select", "mode",
                                          "min-size", "hours", "metric", "count", "sample", "filter", "pid", "timeout",
-                                         "max-wait", "cpu", "check-every", "since", "every", "categories"]
+                                         "max-wait", "cpu", "check-every", "since", "every", "categories", "days"]
 
     init(_ argv: [String]) {
         var i = 0

@@ -154,7 +154,7 @@ extension Commands {
         var scans = try store.growthScans()
         if args.has("scan") || scans.isEmpty {
             if !json { printErr(Style.dim("Measuring folders (read-only, may take a minute)…")) }
-            let scan = GrowthTracker.scan(includePersonal: args.has("personal"))
+            let scan = GrowthTracker.scan(includePersonal: args.has("personal"), previous: args.has("full") ? nil : scans.first)
             try store.recordGrowthScan(scan)
             scans.insert(scan, at: 0)
         }
@@ -176,6 +176,10 @@ extension Commands {
             func short(_ p: String) -> String { p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p }
             func signed(_ v: Int64) -> String { (v > 0 ? "+" : "") + Format.bytes(v) }
             var o = Style.bold("Disk growth") + Style.dim("  \(Format.date(report.from)) → \(Format.date(report.to))") + "\n"
+            if let m = newest.measuredCount {
+                o += Style.dim("  Latest scan: \(String(format: "%.1f", newest.durationSeconds)) s · measured \(m) folder(s)" +
+                               (newest.incremental ? ", reused \(newest.reusedCount ?? 0) unchanged (FSEvents journal)" : " (full scan)")) + "\n"
+            }
             if let v = report.volumeUsedDelta { o += "  Startup volume used: \(v > 0 ? Style.yellow(signed(v)) : Style.green(signed(v)))\n" }
             if let s = report.swapDelta { o += "  Swap files:          \(signed(s))" + Style.dim("  (grows under memory pressure, shrinks after restart)") + "\n" }
             o += "  Tracked folders:     \(signed(report.trackedDelta))\n"
@@ -188,6 +192,35 @@ extension Commands {
             o += t.render()
             o += Style.dim("Allocated sizes. Privacy-protected folders are excluded unless you pass --personal. Scans kept: \(scans.count)/60.") + "\n"
             return o
+        }
+        return 0
+    }
+}
+
+extension Commands {
+    func offenders() throws -> Int32 {
+        guard let store = openStore() else { throw MacPulseError.failed("cannot open history database") }
+        let days = try args.double("days", 7)
+        let limit = try args.int("limit", 5)
+        let r = try OffenderAnalyzer.report(store: store, days: days, limit: limit)
+        emit(r) {
+            var o = Style.bold("Top offenders") + Style.dim("  last \(Int(days)) day(s) · \(r.processSamples) process samples") + "\n"
+            if r.hotMinutes > 0 || r.pressureMinutes > 0 {
+                o += "  Warm (thermal ≥ fair): \(Int(r.hotMinutes)) min · memory pressure elevated: \(Int(r.pressureMinutes)) min\n"
+            }
+            func section(_ title: String, _ list: [Offender]) {
+                guard !list.isEmpty else { return }
+                o += heading(title)
+                for (i, x) in list.enumerated() { o += "  \(i + 1). " + Style.bold(x.name) + Style.dim("  \(x.detail)") + "\n" }
+            }
+            section("Heated the Mac", r.heat)
+            section("Filled memory under pressure", r.memoryPressure)
+            section("Most CPU", r.cpu)
+            section("Most energy", r.energy)
+            section("Most CPU wakeups", r.wakeups)
+            section("Largest memory", r.memory)
+            for n in r.notes { o += Style.dim("\n" + n) }
+            return o + "\n"
         }
         return 0
     }

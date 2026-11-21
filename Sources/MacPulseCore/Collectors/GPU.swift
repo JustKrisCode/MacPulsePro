@@ -37,15 +37,13 @@ public enum GPUCollector {
     public static func devices() -> [GPUDevice] {
         var result: [GPUDevice] = []
         IORegistry.forEachService(matching: "IOAccelerator") { service in
-            guard let props = IORegistry.properties(service) else { return }
-            let stats = props["PerformanceStatistics"] as? [String: Any] ?? [:]
+            // Read only the keys we need: copying the accelerator's full property dictionary is expensive.
+            let stats = IORegistry.property(service, "PerformanceStatistics") as? [String: Any] ?? [:]
             func d(_ k: String) -> Double? { (stats[k] as? NSNumber)?.doubleValue }
             func u(_ k: String) -> UInt64? { (stats[k] as? NSNumber)?.uint64Value }
-            let name = (props["model"] as? String)
-                ?? (props["IOGLBundleName"] as? String)
-                ?? IORegistry.className(service)
+            let name = IORegistry.string(service, "model") ?? IORegistry.string(service, "IOGLBundleName") ?? IORegistry.className(service)
             result.append(GPUDevice(name: name,
-                                    coreCount: (props["gpu-core-count"] as? NSNumber)?.intValue,
+                                    coreCount: IORegistry.int(service, "gpu-core-count").map { Int($0) },
                                     deviceUtilization: d("Device Utilization %") ?? d("GPU Activity(%)"),
                                     rendererUtilization: d("Renderer Utilization %"),
                                     tilerUtilization: d("Tiler Utilization %"),
@@ -93,9 +91,17 @@ public struct GPUSampler: Sendable {
 
     public init() {}
 
-    public mutating func sample() -> GPUSnapshot {
+    /// `includeProcesses: false` skips the per-process walk (the expensive part) and keeps the previous baseline.
+    public mutating func sample(includeProcesses: Bool = true) -> GPUSnapshot {
         let now = Date()
         let devices = GPUCollector.devices()
+        guard includeProcesses else {
+            let util = devices.compactMap(\.deviceUtilization).max()
+            return GPUSnapshot(timestamp: now, devices: devices, processes: [],
+                               utilization: util.map { Metric($0, .measuredUndocumented, source: "IOAccelerator PerformanceStatistics") }
+                                   ?? .unavailable("IOAccelerator", "This GPU driver does not publish utilization statistics."),
+                               processProvenance: .unavailable, notes: ["Per-process GPU time not sampled this tick."])
+        }
         let counters = GPUCollector.processCounters()
         let interval = previousTime.map { now.timeIntervalSince($0) }
         var processes: [GPUProcessUsage] = []
